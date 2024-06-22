@@ -1,638 +1,691 @@
-# NFT Sale and Marketplace
+# NFT 銷售與市場
 
-## Introduction
+## 簡介
 
-In this lesson, we will look at how the sale of NFTs can be organized. We will take contract examples from the official [token examples](https://github.com/ton-blockchain/token-contract), we are interested in:
-  - nft-marketplace.fc - marketplace contract
-  - nft-sale.fc - contract for the sale of a specific NFT
+在本課程中，我們將了解如何組織 NFT 的銷售。我們將從官方 [token examples](https://github.com/ton-blockchain/token-contract) 中獲取合約範例，我們感興趣的是：
+  - nft-marketplace.fc - 市場合約
+  - nft-sale.fc - 特定 NFT 的銷售合約
 
-We will build this lesson as follows, first we will look at the top-level how smart contracts work, and then we will go through the code. We will not analyze every word in the code, so if you are unfamiliar with Func, I advise you to go through [lessons](https://github.com/romanovichim/TonFunClessons_Eng).
+我們將以以下方式構建本課程，首先我們將高層次地了解智能合約如何運作，然後我們將逐步解讀代碼。我們不會逐字分析代碼，因此如果您對 Func 不熟悉，建議您先參考這些 [lessons](https://github.com/romanovichim/TonFunClessons_Eng)。
 
-## Overview of functionality
+## 功能概述
 
-The marketplace smart contract performs one function, it initializes/deploys the sales smart contract. Thus, the marketplace smart contract simply receives a message with all the necessary data to initialize the sale, and the message initializes the smart contract for the sale.
+市場智能合約執行一個功能，即初始化/部署銷售智能合約。因此，市場智能合約僅接收包含初始化銷售所需的所有數據的消息，並用該消息初始化銷售智能合約。
 
-A smart sales contract performs three functions:
-- accumulation of funds within the contract
-- sale
-- cancellation of the sale
+智能銷售合約執行三個功能：
+- 合約內資金的累積
+- 銷售
+- 取消銷售
 
-After a successful sale or cancellation, the contract is "burned".
+成功銷售或取消後，合約會被「燒毀」。
 
-The accumulation is carried out by receiving funds in a contract with op == 1.
+累積資金是通過接收具有 op == 1 的資金消息來進行的。
 
-The cancellation of the sale is carried out by transferring the ownership of the current owner, the current owner and "burning" the smart contract.
+取消銷售是通過轉移當前所有者的所有權來實現的，並「燒毀」智能合約。
 
-When selling, we send TONcoins to the owner via messages, we pay marketplace commissions and royalties by messages, and at the end we send a message about the change of ownership of the NFT and burn the contract.
+銷售過程中，我們通過消息向所有者發送 TONcoins，支付市場佣金和版稅，最後發送關於所有權變更的消息並燒毀合約。
 
-Now let's take a look at the contract code.
+現在讓我們看看合約代碼。
 
-### Marketplace Contract
+### 市場合約
 
-So, the task of the marketplace smart contract is to deploy/initialize a contract into the Sale network. We will do this using the already familiar State Init. The smart contract will receive the State Init message (the code and primary data for the storage), take a hash from it and thus form the Sale address of the contract, and then send a message to this address for initialization.
+市場智能合約的任務是部署/初始化銷售網絡中的合約。我們將使用已熟悉的 State Init 來完成此操作。智能合約將接收 State Init 消息（代碼和存儲的初始數據），從中提取哈希，從而形成銷售合約的地址，然後向該地址發送消息進行初始化。
 
-Let's go through the code for a more detailed analysis.
+讓我們通過代碼進行更詳細的分析。
 
-#### Storage
+#### 存儲
 
-We will store the address of the marketplace smart contract owner in the `c4` register, we will need it to check from whom the message came, so that the sale can be initialized only from the address of the marketplace smart contract owner.
+我們將市場智能合約所有者的地址存儲在 `c4` 寄存器中，我們需要它來檢查消息的來源，以便只有市場智能合約所有者的地址才能初始化銷售。
 
-To work with the storage, this smart contract has two auxiliary functions `load_data()` and `save_data()`, which will upload and save data to the storage, respectively.
+為了處理存儲，這個智能合約有兩個輔助函數 `load_data()` 和 `save_data()`，分別用來上傳和保存數據到存儲中。
 
-	(slice) load_data() inline {
-	  var ds = get_data().begin_parse();
-	  return 
-		(ds~load_msg_addr() ;; owner
-		 );
-	}
+```func
+(slice) load_data() inline {
+  var ds = get_data().begin_parse();
+  return 
+    (ds~load_msg_addr() ;; owner
+     );
+}
 
-	() save_data(slice owner_address) impure inline {
-	  set_data(begin_cell()
-		.store_slice(owner_address)
-		.end_cell());
-	}
+() save_data(slice owner_address) impure inline {
+  set_data(begin_cell()
+    .store_slice(owner_address)
+    .end_cell());
+}
+```
 
-#### Handling internal messages
+#### 處理內部消息
 
-Let's move on to parsing `recv_internal()`. The smart contract will not process empty messages, so we will check using `slice_empty()` and end the execution of the smart contract in case of an empty message using `return()`.
+讓我們繼續解析 `recv_internal()`。智能合約不會處理空消息，因此我們將使用 `slice_empty()` 檢查並在空消息的情況下使用 `return()` 結束智能合約的執行。
 
-	() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		if (in_msg_body.slice_empty?()) { ;; ignore empty messages
-			return ();
-		}
-	}
+```func
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+}
+```
 
-Next, we get the flags and check if the incoming message is a bounced one. If this is a bounce, we complete the work of the smart contract:
+接下來，我們獲取標誌並檢查進入的消息是否為 bounced。如果這是一個 bounce，我們結束智能合約的工作：
 
-	() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		if (in_msg_body.slice_empty?()) { ;; ignore empty messages
-			return ();
-		}
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
+```func
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
 
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-	}
-	
-> More about bounce at [page 78 here](https://ton-blockchain.github.io/docs/tblkch.pdf))
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
+}
+```
+> 有關 bounce 的更多信息，請參見 [這裡第 78 頁](https://ton-blockchain.github.io/docs/tblkch.pdf)
 
-According to the logic of the marketplace, only the owner of the marketplace smart contract can initialize the sales contract, so we get the sender's address from `c4` and check if they match:
+根據市場邏輯，只有市場智能合約的所有者才能初始化銷售合約，因此我們從 `c4` 中獲取發件人的地址並檢查它們是否匹配：
 
-	() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		if (in_msg_body.slice_empty?()) { ;; ignore empty messages
-			return ();
-		}
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
+```func
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
 
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-		slice sender_address = cs~load_msg_addr();
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
 
-		var (owner_address) = load_data();
-		throw_unless(401, equal_slices(sender_address, owner_address));
+    var (owner_address) = load_data();
+    throw_unless(401, equal_slices(sender_address, owner_address));
 
-	}
+}
+```
 
-Let's proceed to the initialization of the smart sales contract, for this we will get op and check that it is equal to 1.
-> As a reminder, using op is a recommendation from the [documentation](https://ton-blockchain.github.io/docs/#/howto/smart-contract-guidelines?id=smart-contract-guidelines) on smart contracts in TON.
+接下來，我們進行智能銷售合約的初始化，為此我們將獲取 op 並檢查其是否等於 1。
+> 提醒一下，使用 op 是 TON 智能合約 [文檔](https://ton-blockchain.github.io/docs/#/howto/smart-contract-guidelines?id=smart-contract-guidelines) 中的建議。
 
-	() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		if (in_msg_body.slice_empty?()) { ;; ignore empty messages
-			return ();
-		}
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
+```func
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
 
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-		slice sender_address = cs~load_msg_addr();
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
 
-		var (owner_address) = load_data();
-		throw_unless(401, equal_slices(sender_address, owner_address));
-		int op = in_msg_body~load_uint(32);
+    var (owner_address) = load_data();
+    throw_unless(401, equal_slices(sender_address, owner_address));
+    int op = in_msg_body~load_uint(32);
 
-		if (op == 1) { ;; deploy new auction
+    if (op == 1) { ;; deploy new auction
 
-		}
-	}
-	
+    }
+}
+```
 
 ##### Op == 1
 
-We continue to parse the message body, get the amount of TONcoin that we will send to the Sale contract, and also get the StateInit Sale of the contract and the message body for deployment.
+我們繼續解析消息正文，獲取將發送到銷售合約的 TONcoin 數量，並獲取銷售合約的 StateInit 和部署的消息正文。
+
+```func
+if (op == 1) { ;; deploy new auction
+  int amount = in_msg_body~load_coins();
+  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
+
+}
+```
+
+使用 [cell_hash](https://ton-blockchain.github.io/docs/#/func/stdlib?id=cell_hash) 計算 StateInit 哈希並收集銷售合約的地址：
+
+```func
+if (op == 1) { ;; deploy new auction
+  int amount = in_msg_body~load_coins();
+  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
+  int state_init_hash = cell_hash(state_init);
+  slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
+}
+```
+
+剩下的就是發送消息，這樣當收到帶有 op == 1 的消息時，市場智能合約將初始化銷售合約。
+
+```func
+if (op == 1) { ;; deploy new auction
+  int amount = in_msg_body~load_coins();
+  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
+  int state_init_hash = cell_hash(state_init);
+  slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
+
+  var msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_uint(4, 3).store_slice(dest_address)
+    .store_grams(amount)
+    .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+    .store_ref(state_init)
+    .store_ref(body);
+  send_raw_message(msg.end_cell(), 1); ;; paying fees, revert on errors
+}
+```
+
+市場智能合約的全部代碼如下。
+
+```func
+;; NFT marketplace smart contract
+
+;; storage scheme
+;; storage#_ owner_address:MsgAddress
+;;           = Storage;
+
+(slice) load_data() inline {
+  var ds = get_data().begin_parse();
+  return 
+    (ds~load_msg_addr() ;; owner
+     );
+}
+
+() save_data(slice owner_address) impure inline {
+  set_data(begin_cell()
+    .store_slice(owner_address)
+    .end_cell());
+}
+
+() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) { ;; ignore empty messages
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
+    slice sender_address = cs~load_msg_addr();
+
+    var (owner_address) = load_data();
+    throw_unless(401, equal_slices(sender_address, owner_address));
+    int op = in_msg_body~load_uint(32);
 
     if (op == 1) { ;; deploy new auction
       int amount = in_msg_body~load_coins();
       (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
+      int state_init_hash = cell_hash(state_init);
+      slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
 
+      var msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_uint(4, 3).store_slice(dest_address)
+        .store_grams(amount)
+        .store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
+        .store_ref(state_init)
+        .store_ref(body);
+      send_raw_message(msg.end_cell(), 1); ;; paying fees, revert on errors
+    }
+}
+
+() recv_external(slice in_msg) impure {
+}
+```
+
+### 銷售合約
+
+#### 概述
+
+讓我們看看 `recv_internal()` 中的 `op` 來了解這個智能合約「能做什麼」。
+- `op` == 1 - 空 op，只是接收 Toncoin 合約（您可以使用此 op 在合約中累積加密貨幣以備後用）
+- `op` == 2 - 購買 NFT - 對於這個 op，有一個輔助函數 buy()，它將發送消息以完成 NFT 購買
+- `op` == 3 - 取消銷售
+
+#### 存儲
+
+首先我們將分析合約在 `c4` 寄存器中存儲了什麼（換句話說，存儲）。我們的智能合約有兩個輔助函數 `load_data()` 和 `save_data()`，分別用來上傳和保存數據到存儲中。
+
+在存儲中：
+- `slice marketplace_address` - 市場智能合約地址
+- `slice nft_address` - 售出的 nft 地址
+- `slice nft_owner_address` - nft 所有者地址
+- `int full_price` - 價格
+- `cell fees_cell` - 包含佣金信息的 cell，例如：市場佣金和版稅
+
+用於處理存儲的函數代碼：
+
+```func
+(slice, slice, slice, int, cell) load_data() inline {
+  var ds = get_data().begin_parse();
+  return 
+    (ds~load_msg_addr(), ;; marketplace_address 
+      ds~load_msg_addr(), ;; nft_address
+      ds~load_msg_addr(),  ;; nft_owner_address
+      ds~load_coins(), ;; full_price
+      ds~load_ref() ;; fees_cell
+     );
+}
+
+() save_data(slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell) impure inline {
+  set_data(begin_cell()
+    .store_slice(marketplace_address)
+    .store_slice(nft_address)
+    .store_slice(nft_owner_address)
+    .store_coins(full_price)
+    .store_ref(fees_cell)
+    .end_cell());
+}
+```
+
+#### 處理內部消息
+
+和市場智能合約一樣，銷售智能合約也從卸載標誌開始，並檢查消息是否為 bounced。
+
+```func
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
     }
 
-Calculate the StateInit hash using [cell_hash](https://ton-blockchain.github.io/docs/#/func/stdlib?id=cell_hash) and collect the Sale address of the contract:
+}
+```
 
-		if (op == 1) { ;; deploy new auction
-		  int amount = in_msg_body~load_coins();
-		  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
-		  int state_init_hash = cell_hash(state_init);
-		  slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
-		}
+接下來，我們上傳發送消息到智能合約的發件人地址，以及 `c4` 寄存器中的數據（存儲）。
 
-It remains only to send a message, and then when a message with op == 1 arrives, the marketplace smart contract will initialize the Sale contract.
+```func
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
 
-		if (op == 1) { ;; deploy new auction
-		  int amount = in_msg_body~load_coins();
-		  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
-		  int state_init_hash = cell_hash(state_init);
-		  slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
 
-		  var msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_uint(4, 3).store_slice(dest_address)
-			.store_grams(amount)
-			.store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
-			.store_ref(state_init)
-			.store_ref(body);
-		  send_raw_message(msg.end_cell(), 1); ;; paying fees, revert on errors
-		}
+    slice sender_address = cs~load_msg_addr();
 
-And that’s it according to the smart contract of the marketplace, below is the full code.
+    var (marketplace_address, nft_address, nft_owner_address, full_price, fees_cell) = load_data();
+}
+```
 
-	;; NFT marketplace smart contract
+##### 未初始化的 NFT
 
-	;; storage scheme
-	;; storage#_ owner_address:MsgAddress
-	;;           = Storage;
+在進行銷售和取消銷售「拍賣」的邏輯之前，我們需要處理未初始化的 NFT 的情況。要了解 NFT 是否已初始化，請檢查所有者的地址是否為零。然後，使用波浪號進行檢查（`~` 是 FUNC 中的位元取反運算符）。
 
-	(slice) load_data() inline {
-	  var ds = get_data().begin_parse();
-	  return 
-		(ds~load_msg_addr() ;; owner
-		 );
-	}
+```func
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
 
-	() save_data(slice owner_address) impure inline {
-	  set_data(begin_cell()
-		.store_slice(owner_address)
-		.end_cell());
-	}
+    if (flags & 1) {  ;; ignore all bounced messages
+        return ();
+    }
 
-	() recv_internal(int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		if (in_msg_body.slice_empty?()) { ;; ignore empty messages
-			return ();
-		}
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
+    slice sender_address = cs~load_msg_addr();
 
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-		slice sender_address = cs~load_msg_addr();
+    var (marketplace_address, nft_address, nft_owner_address, full_price, fees_cell) = load_data();
 
-		var (owner_address) = load_data();
-		throw_unless(401, equal_slices(sender_address, owner_address));
-		int op = in_msg_body~load_uint(32);
-
-		if (op == 1) { ;; deploy new auction
-		  int amount = in_msg_body~load_coins();
-		  (cell state_init, cell body) = (cs~load_ref(), cs~load_ref());
-		  int state_init_hash = cell_hash(state_init);
-		  slice dest_address = begin_cell().store_int(0, 8).store_uint(state_init_hash, 256).end_cell().begin_parse();
-
-		  var msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_uint(4, 3).store_slice(dest_address)
-			.store_grams(amount)
-			.store_uint(4 + 2 + 1, 1 + 4 + 4 + 64 + 32 + 1 + 1 + 1)
-			.store_ref(state_init)
-			.store_ref(body);
-		  send_raw_message(msg.end_cell(), 1); ;; paying fees, revert on errors
-		}
-	}
-
-	() recv_external(slice in_msg) impure {
-	}
-
-
-### Sale Contract
-
-#### Review
-
-Let's look at the `op` in `recv_internal()` to understand what this smart contract "can do".
-- `op` == 1 - empty op to just get Toncoin contracts (you can accumulate crypto in a contract with this op for later use)
-- `op` == 2 - buy NFT - for this op, an auxiliary function buy () is written, which will send messages to make an NFT buy
-- `op` == 3 - cancel sale
-
-#### Storage
-
-The first thing we will analyze is what the contract stores in the `c4` register (in other words, storage). Our smart contract has two helper functions `load_data()` and `save_data()` that will upload and save data to storage respectively.
-
-In storage:
-- `slice marketplace_address` - marketplace smart contract address
-- `slice nft_address` - address of sold nft
-- `slice nft_owner_address` - nft owner address
-- `int full_price` - price
-- `cell fees_cell` - a cell containing information about commissions, for example: marketplace commission and royalties
-
-Function code for working with storage:
-
-	(slice, slice, slice, int, cell) load_data() inline {
-	  var ds = get_data().begin_parse();
-	  return 
-		(ds~load_msg_addr(), ;; marketplace_address 
-		  ds~load_msg_addr(), ;; nft_address
-		  ds~load_msg_addr(),  ;; nft_owner_address
-		  ds~load_coins(), ;; full_price
-		  ds~load_ref() ;; fees_cell
-		 );
-	}
-
-	() save_data(slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell) impure inline {
-	  set_data(begin_cell()
-		.store_slice(marketplace_address)
-		.store_slice(nft_address)
-		.store_slice(nft_owner_address)
-		.store_coins(full_price)
-		.store_ref(fees_cell)
-		.end_cell());
-	}
-
-#### Handling internal messages
-
-Like the marketplace smart contract, the sell smart contract starts by unloading the flags and checking that the message is not bounced.
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
-
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-
-	}
-
-Next, we upload the address of the sender of the message to the smart contract, as well as the data from the `c4` register (storage).
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
-
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-
-		slice sender_address = cs~load_msg_addr();
-
-		var (marketplace_address, nft_address, nft_owner_address, full_price, fees_cell) = load_data();
-	}
-
-##### Uninitialized NFTs
-
-Now, before moving on to the logic of selling and canceling the "auction" of the sale, we need to handle the situation when the NFT is uninitialized. To understand whether the NFT is initialized, check whether the address of the owner is zero. And then, using the tilde, we organize the check (`~` is bitwise not in FUNC).
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int flags = cs~load_uint(4);
-
-		if (flags & 1) {  ;; ignore all bounced messages
-			return ();
-		}
-
-		slice sender_address = cs~load_msg_addr();
-
-		var (marketplace_address, nft_address, nft_owner_address, full_price, fees_cell) = load_data();
-
-		var is_initialized = nft_owner_address.slice_bits() > 2; ;; not initialized if null address
-
-		if (~ is_initialized) {
-
-
-		}
-	}
-
-I note right away that in the case of an uninitialized NFT, we will only receive messages from the NFT address and only with op meaning the transfer of ownership, so the processing of an uninitialized NFT in the Sale contract comes down to establishing the owner. But let's go in order:
-
-If the message was sent from the marketplace, we simply accumulate Toncoins in the contract (for example, in the case of a contract deployment).
-
-		if (~ is_initialized) {
-
-		  if (equal_slices(sender_address, marketplace_address)) {
-			 return (); ;; just accept coins on deploy
-		  }
-
-		}
-
-Next, we look for the message to come from the NFT contract, and also check that the `op` of such a message is equal to `ownership_assigned`, i.e. this is a message about a change in ownership that has occurred.
+    var is_initialized = nft_owner_address.slice_bits() > 2; ;; not initialized if null address
 
     if (~ is_initialized) {
-      
-      if (equal_slices(sender_address, marketplace_address)) {
-         return (); ;; just accept coins on deploy
-      }
 
-      throw_unless(500, equal_slices(sender_address, nft_address));
-      int op = in_msg_body~load_uint(32);
-      throw_unless(501, op == op::ownership_assigned());
 
     }
-	
-It remains only to get the address and save the information about the changed ownership of the NFT.
+}
+```
 
-		if (~ is_initialized) {
+我立即指出，在未初始化的 NFT 情況下，我們只會接收來自 NFT 地址的消息，並且只包含 op 表示所有權轉移的消息，因此在銷售合約中處理未初始化的 NFT 主要是確定所有者。但是讓我們按順序進行：
 
-		  if (equal_slices(sender_address, marketplace_address)) {
-			 return (); ;; just accept coins on deploy
-		  }
+如果消息是從市場發送的，我們僅在合約中累積 Toncoins（例如，在合約部署時）。
 
-		  throw_unless(500, equal_slices(sender_address, nft_address));
-		  int op = in_msg_body~load_uint(32);
-		  throw_unless(501, op == op::ownership_assigned());
-		  int query_id = in_msg_body~load_uint(64);
-		  slice prev_owner_address = in_msg_body~load_msg_addr();
+```func
+if (~ is_initialized) {
 
-		  save_data(marketplace_address, nft_address, prev_owner_address, full_price, fees_cell);
+  if (equal_slices(sender_address, marketplace_address)) {
+     return (); ;; just accept coins on deploy
+  }
 
-		  return ();
+}
+```
 
-		}
-		
-##### Message with empty body
+接下來，我們檢查消息是否來自 NFT 合約，並且檢查該消息的 `op` 是否等於 `ownership_assigned`，即這是一個所有權變更的消息。
 
-In this example of a Sale contract, there is also a case where the body of the message that comes into the contract is empty, in which case the contract will simply try to make a purchase by calling the `buy()` helper function.
+```func
+if (~ is_initialized) {
 
-		if (in_msg_body.slice_empty?()) {
-			buy(my_balance, marketplace_address, nft_address, nft_owner_address, full_price, fees_cell, msg_value, sender_address, 0);
-			return ();
-		}
-		
-After processing the case of an empty message, we get `op` and `query_id`. We will use `op ` to build logic, at the very end we will add an error call - for the case when something "incomprehensible" came:
+  if (equal_slices(sender_address, marketplace_address)) {
+     return (); ;; just accept coins on deploy
+  }
 
-		int op = in_msg_body~load_uint(32);
-		int query_id = in_msg_body~load_uint(64);
+  throw_unless(500, equal_slices(sender_address, nft_address));
+  int op = in_msg_body~load_uint(32);
+  throw_unless(501, op == op::ownership_assigned());
 
-		if (op == 1) { 
-			;; аккумулируем в контракте TONCoins'ы
-			return ();
-		}
+}
+```
 
-		if (op == 2) { 
-			 ;; покупка NFT
-			return ();
-		}
+只需獲取地址並保存有關所有權變更的信息。
 
-		if (op == 3) { 
-			;;отмена продажи
-			return ();
-		}
+```func
+if (~ is_initialized) {
 
-		throw(0xffff);
+  if (equal_slices(sender_address, marketplace_address)) {
+     return (); ;; just accept coins on deploy
+  }
 
-##### Purchase
+  throw_unless(500, equal_slices(sender_address, nft_address));
+  int op = in_msg_body~load_uint(32);
+  throw_unless(501, op == op::ownership_assigned());
+  int query_id = in_msg_body~load_uint(64);
+  slice prev_owner_address = in_msg_body~load_msg_addr();
 
-For the purchase, a separate helper function is compiled, which we call in `recv_internal()`.
+  save_data(marketplace_address, nft_address, prev_owner_address, full_price, fees_cell);
 
-    if (op == 2) { ;; buy
-     
-      buy(my_balance, marketplace_address, nft_address, nft_owner_address, full_price, fees_cell, msg_value, sender_address, query_id);
+  return ();
 
-      return ();
+}
+```
 
-    }
+##### 空消息體
 
-The first thing to do before making a sale is to check if there are enough funds sent with the message. To do this, you need to check that there is enough money to cover the price, as well as the commissions associated with sending messages.
+在這個銷售合約範例中，還有一種情況是進入合約的消息體為空，在這種情況下，合約只會嘗試通過調用輔助函數 `buy()` 進行購買。
 
-For commissions, we define a `min_gas_amount()` function that will simply store a value of 1 TON for verification, the function is defined as a low-level TVM primitive, using the `asm` keyword.
+```func
+if (in_msg_body.slice_empty?()) {
+    buy(my_balance, marketplace_address, nft_address, nft_owner_address, full_price, fees_cell, msg_value, sender_address, 0);
+    return ();
+}
+```
 
-	int min_gas_amount() asm "1000000000 PUSHINT"; ;; 1 TON
+處理空消息的情況後，我們獲取 `op` 和 `query_id`。我們將使用 `op` 構建邏輯，最後我們將添加一個錯誤調用，以應對接收到的「不明」消息：
 
-We will implement the check, and also immediately upload information about royalties, for this there is a separate auxiliary function:
+```func
+int op = in_msg_body~load_uint(32);
+int query_id = in_msg_body~load_uint(64);
 
-	() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
-	  throw_unless(450, msg_value >= full_price + min_gas_amount());
+if (op == 1) { 
+    ;; 累積合約中的 TONCoins
+    return ();
+}
 
-	  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+if (op == 2) { 
+     ;; 購買 NFT
+    return ();
+}
 
-	}
+if (op == 3) { 
+    ;; 取消銷售
+    return ();
+}
 
-	(int, slice, int) load_fees(cell fees_cell) inline {
-	  var ds = fees_cell.begin_parse();
-	  return 
-		(ds~load_coins(), ;; marketplace_fee,
-		  ds~load_msg_addr(), ;; royalty_address 
-		  ds~load_coins() ;; royalty_amount
-		 );
-	}
+throw(0xffff);
+```
 
-Let's move on to sending messages. We will send the first message to the current NFT owner, we will transfer TONcoins to him. The quantity should be equal to: the price of NFT minus the marketplace commissions and royalties, as well as the remaining balance of the smart contract, in case, for example, the purchase was made by more than one message and there were already TONcoins in the contract.
+##### 購買
 
-	() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
-	  throw_unless(450, msg_value >= full_price + min_gas_amount());
+購買過程中，會編譯一個單獨的輔助函數，我們會在 `recv_internal()` 中調用它。
 
-	  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+```func
+if (op == 2) { ;; buy
+ 
+  buy(my_balance, marketplace_address, nft_address, nft_owner_address, full_price, fees_cell, msg_value, sender_address, query_id);
 
-	  var owner_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(nft_owner_address)
-			   .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+  return ();
 
-	  send_raw_message(owner_msg.end_cell(), 1);
+}
+```
 
-	  }
+在進行銷售之前，首先要檢查消息中是否有足夠的資金。為此，您需要檢查是否有足夠的資金來支付價格以及與發送消息相關的佣金。
 
-Then we send royalties and marketplace commissions, everything is simple here, the corresponding amounts are sent to the royalties and marketplace addresses:
+我們將定義一個 `min_gas_amount()` 函數，該函數將儲存一個 1 TON 的值進行驗證，該函數定義為一個低級 TVM 原語，使用 `asm` 關鍵字。
 
-	() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
-	  throw_unless(450, msg_value >= full_price + min_gas_amount());
+```func
+int min_gas_amount() asm "1000000000 PUSHINT"; ;; 1 TON
+```
 
-	  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+我們將進行檢查，同時立即上傳有關版稅的信息，為此有一個單獨的輔助函數：
 
-	  var owner_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(nft_owner_address)
-			   .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+```func
+() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
+  throw_unless(450, msg_value >= full_price + min_gas_amount());
 
-	  send_raw_message(owner_msg.end_cell(), 1);
+  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
 
+}
 
-	  var royalty_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(royalty_address)
-			   .store_coins(royalty_amount)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+(int, slice, int) load_fees(cell fees_cell) inline {
+  var ds = fees_cell.begin_parse();
+  return 
+    (ds~load_coins(), ;; marketplace_fee,
+      ds~load_msg_addr(), ;; royalty_address 
+      ds~load_coins() ;; royalty_amount
+     );
+}
+```
 
-	  send_raw_message(royalty_msg.end_cell(), 1);
+讓我們繼續發送消息。我們將向當前的 NFT 所有者發送第一個消息，將 TONcoins 轉移給他。數量應等於：NFT 價格減去市場佣金和版稅，以及智能合約的剩餘餘額，例如，如果購買是通過多個消息進行的，並且合約中已經有 TONcoins。
 
+```func
+() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
+  throw_unless(450, msg_value >= full_price + min_gas_amount());
 
-	  var marketplace_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(marketplace_address)
-			   .store_coins(marketplace_fee)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
 
-	  send_raw_message(marketplace_msg.end_cell(), 1);
-
-	}
-
-It remains to send the last message, the message to the NFT transfer contract (with `op::transfer()`)
-
-	() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
-	  throw_unless(450, msg_value >= full_price + min_gas_amount());
-
-	  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
-
-	  var owner_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(nft_owner_address)
-			   .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(owner_msg.end_cell(), 1);
-
-
-	  var royalty_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(royalty_address)
-			   .store_coins(royalty_amount)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(royalty_msg.end_cell(), 1);
-
-
-	  var marketplace_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(marketplace_address)
-			   .store_coins(marketplace_fee)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(marketplace_msg.end_cell(), 1);
-
-	  var nft_msg = begin_cell()
-			   .store_uint(0x18, 6) 
-			   .store_slice(nft_address)
-			   .store_coins(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_uint(op::transfer(), 32)
-			   .store_uint(query_id, 64)
-			   .store_slice(sender_address) ;; new_owner_address
-			   .store_slice(sender_address) ;; response_address
-			   .store_int(0, 1) ;; empty custom_payload
-			   .store_coins(0) ;; forward amount to new_owner_address
-			   .store_int(0, 1); ;; empty forward_payload
-
-
-	  send_raw_message(nft_msg.end_cell(), 128 + 32);
-	}
-
-And everything seems to be, but it is worth stopping at the mode with which we sent the last message.
-
-###### "Burning contract" mode == 128 + 32
-
-After sending a message about the transfer of NFT, the smart contract of sale is no longer relevant, the question arises how to "destroy" it or, in other words, "burn it". TON has a message sending mode that destroys the current contract.
-
-`mode' = mode + 32` means that the current account should be destroyed if its resulting balance is zero. ([Documentation Link](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message))
-
-Thus, at the very end of the `buy()` function, we send a message about the transfer of ownership and burn this sales contract.
-
-The final code of the `buy()` function:
-
-	() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
-	  throw_unless(450, msg_value >= full_price + min_gas_amount());
-
-	  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
-
-	  var owner_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(nft_owner_address)
-			   .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(owner_msg.end_cell(), 1);
-
-
-	  var royalty_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(royalty_address)
-			   .store_coins(royalty_amount)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(royalty_msg.end_cell(), 1);
-
-
-	  var marketplace_msg = begin_cell()
-			   .store_uint(0x10, 6) ;; nobounce
-			   .store_slice(marketplace_address)
-			   .store_coins(marketplace_fee)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
-
-	  send_raw_message(marketplace_msg.end_cell(), 1);
-
-	  var nft_msg = begin_cell()
-			   .store_uint(0x18, 6) 
-			   .store_slice(nft_address)
-			   .store_coins(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_uint(op::transfer(), 32)
-			   .store_uint(query_id, 64)
-			   .store_slice(sender_address) ;; new_owner_address
-			   .store_slice(sender_address) ;; response_address
-			   .store_int(0, 1) ;; empty custom_payload
-			   .store_coins(0) ;; forward amount to new_owner_address
-			   .store_int(0, 1); ;; empty forward_payload
-
-
-	  send_raw_message(nft_msg.end_cell(), 128 + 32);
-	}
-
-##### Cancel sale
-
-Cancellation is simply a message transferring ownership of the NFT from the current owner, to the current owner with `mode == 128 + 32` to burn the contract later. But of course, first you need to check a few conditions.
-
-The first thing to check is that we have enough TONcoin to send messages
-
-    if (op == 3) { ;; cancel sale
-         throw_unless(457, msg_value >= min_gas_amount());
-
-        return ();
-    }
-
-The second is that the message about the cancellation of the sale came either from the marketplace or from the owner of the NFT. To do this, we use the bitwise OR `|`.
-
-    if (op == 3) { ;; cancel sale
-         throw_unless(457, msg_value >= min_gas_amount());
-         throw_unless(458, equal_slices(sender_address, nft_owner_address) | equal_slices(sender_address, marketplace_address));
-
-        return ();
-    }
-	
-Well, the last is sending a message about the transfer of ownership from the owner to the owner)
-
-    if (op == 3) { ;; cancel sale
-         throw_unless(457, msg_value >= min_gas_amount());
-         throw_unless(458, equal_slices(sender_address, nft_owner_address) | equal_slices(sender_address, marketplace_address));
-
-         var msg = begin_cell()
+  var owner_msg = begin_cell()
            .store_uint(0x10, 6) ;; nobounce
+           .store_slice(nft_owner_address)
+           .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(owner_msg.end_cell(), 1);
+
+  }
+```
+
+然後我們發送版稅和市場佣金，這裡很簡單，相應的金額將發送到版稅和市場地址：
+
+```func
+() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
+  throw_unless(450, msg_value >= full_price + min_gas_amount());
+
+  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+
+  var owner_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(nft_owner_address)
+           .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(owner_msg.end_cell(), 1);
+
+
+  var royalty_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(royalty_address)
+           .store_coins(royalty_amount)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(royalty_msg.end_cell(), 1);
+
+
+  var marketplace_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(marketplace_address)
+           .store_coins(marketplace_fee)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(marketplace_msg.end_cell(), 1);
+
+}
+```
+
+剩下的就是發送最後一條消息，即關於 NFT 轉移合約的消息（帶有 `op::transfer()`）
+
+```func
+() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
+  throw_unless(450, msg_value >= full_price + min_gas_amount());
+
+  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+
+  var owner_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(nft_owner_address)
+           .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(owner_msg.end_cell(), 1);
+
+
+  var royalty_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(royalty_address)
+           .store_coins(royalty_amount)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(royalty_msg.end_cell(), 1);
+
+
+  var marketplace_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(marketplace_address)
+           .store_coins(marketplace_fee)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(marketplace_msg.end_cell(), 1);
+
+  var nft_msg = begin_cell()
+           .store_uint(0x18, 6) 
            .store_slice(nft_address)
            .store_coins(0)
            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
            .store_uint(op::transfer(), 32)
-           .store_uint(query_id, 64) 
-           .store_slice(nft_owner_address) ;; new_owner_address
-           .store_slice(nft_owner_address) ;; response_address;
+           .store_uint(query_id, 64)
+           .store_slice(sender_address) ;; new_owner_address
+           .store_slice(sender_address) ;; response_address
            .store_int(0, 1) ;; empty custom_payload
            .store_coins(0) ;; forward amount to new_owner_address
            .store_int(0, 1); ;; empty forward_payload
 
-        send_raw_message(msg.end_cell(), 128 + 32);
 
-        return ();
-    }
-	
-## Conclusion
+  send_raw_message(nft_msg.end_cell(), 128 + 32);
+}
+```
 
-I publish similar analyzes and tutorials in the telegram channel https://t.me/ton_learn, I will be glad for your subscription.
+一切似乎都已完成，但值得一提的是我們發送最後一條消息時使用的模式。
+
+###### 「燒毀合約」模式 == 128 + 32
+
+發送關於 NFT 轉移的消息後，銷售智能合約不再相關，問題是如何「銷毀」它，或者換句話說，「燒毀」它。TON 有一個消息發送模式，它會銷毀當前的合約。
+
+`mode' = mode + 32` 表示如果結果餘額為零，則應銷毀當前賬戶。([文檔鏈接](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message))
+
+因此，在 `buy()` 函數的最後，我們發送關於所有權變更的消息並燒毀此銷售合約。
+
+`buy()` 函數的最終代碼：
+
+```func
+() buy(int my_balance, slice marketplace_address, slice nft_address, slice nft_owner_address, int full_price, cell fees_cell, int msg_value, slice sender_address, int query_id) impure {
+  throw_unless(450, msg_value >= full_price + min_gas_amount());
+
+  var (marketplace_fee, royalty_address, royalty_amount) = load_fees(fees_cell);
+
+  var owner_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(nft_owner_address)
+           .store_coins(full_price - marketplace_fee - royalty_amount + (my_balance - msg_value))
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(owner_msg.end_cell(), 1);
+
+
+  var royalty_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(royalty_address)
+           .store_coins(royalty_amount)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(royalty_msg.end_cell(), 1);
+
+
+  var marketplace_msg = begin_cell()
+           .store_uint(0x10, 6) ;; nobounce
+           .store_slice(marketplace_address)
+           .store_coins(marketplace_fee)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1);
+
+  send_raw_message(marketplace_msg.end_cell(), 1);
+
+  var nft_msg = begin_cell()
+           .store_uint(0x18, 6) 
+           .store_slice(nft_address)
+           .store_coins(0)
+           .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+           .store_uint(op::transfer(), 32)
+           .store_uint(query_id, 64)
+           .store_slice(sender_address) ;; new_owner_address
+           .store_slice(sender_address) ;; response_address
+           .store_int(0, 1) ;; empty custom_payload
+           .store_coins(0) ;; forward amount to new_owner_address
+           .store_int(0, 1); ;; empty forward_payload
+
+
+  send_raw_message(nft_msg.end_cell(), 128 + 32);
+}
+```
+
+##### 取消銷售
+
+取消只是一條將所有權從當前所有者轉移到當前所有者的消息，帶有 `mode == 128 + 32`，以便稍後銷毀合約。但當然，首先需要檢查一些條件。
+
+首先檢查我們是否有足夠的 TONcoin 發送消息
+
+```func
+if (op == 3) { ;; cancel sale
+     throw_unless(457, msg_value >= min_gas_amount());
+
+    return ();
+}
+```
+
+第二，檢查取消銷售的消息是否來自市場或 NFT 所有者。為此，我們使用位元或 `|`。
+
+```func
+if (op == 3) { ;; cancel sale
+     throw_unless(457, msg_value >= min_gas_amount());
+     throw_unless(458, equal_slices(sender_address, nft_owner_address) | equal_slices(sender_address, marketplace_address));
+
+    return ();
+}
+```
+
+最後，發送一條將所有權從所有者轉移到所有者的消息）
+
+```func
+if (op == 3) { ;; cancel sale
+     throw_unless(457, msg_value >= min_gas_amount());
+     throw_unless(458, equal_slices(sender_address, nft_owner_address) | equal_slices(sender_address, marketplace_address));
+
+     var msg = begin_cell()
+       .store_uint(0x10, 6) ;; nobounce
+       .store_slice(nft_address)
+       .store_coins(0)
+       .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+       .store_uint(op::transfer(), 32)
+       .store_uint(query_id, 64) 
+       .store_slice(nft_owner_address) ;; new_owner_address
+       .store_slice(nft_owner_address) ;; response_address;
+       .store_int(0, 1) ;; empty custom_payload
+       .store_coins(0) ;; forward amount to new_owner_address
+       .store_int(0, 1); ;; empty forward_payload
+
+    send_raw_message(msg.end_cell(), 128 + 32);
+
+    return ();
+}
+```
+
+## 結論
+
+我在 [Telegram 頻道](https://t.me/ton_learn) 上發布類似的分析和教程，歡迎訂閱。

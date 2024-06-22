@@ -1,514 +1,555 @@
-#  NFT collection deploy
+# 部署 NFT 集合
 
-## Introduction
+## 簡介
 
-In this tutorial, we will deploy an NFT collection using the tonutils-go library. In order for the lesson to qualitatively cover the topic of deploying an NFT collection, we will do the following, first we will make requests to an existing collection, thus we will get examples of what can be stored in an NFT collection and its element. And then we will create our own NFT collection (quite a test one without any sense).
+在本教程中，我們將使用 tonutils-go 庫來部署 NFT 集合。為了全面了解如何部署 NFT 集合，我們將首先對現有集合進行查詢，了解其存儲的信息，然後我們將創建自己的 NFT 集合（這是一個測試集合，沒有實際意義）。
 
-Before proceeding to the lesson, I advise you to watch the previous lesson in order to understand how a wallet is created and contracts are deployed.
+在開始本教程之前，建議先查看上一課程，以了解如何創建錢包和部署合約。
 
-## Get information about the Collection and an individual element
+## 獲取集合和單個元素的信息
 
-Getting information about the collection involves making GET requests to the smart contract. In this lesson, we will consider obtaining information from smart contracts that comply with the standards. Lesson with analysis of the NFT standard [here](https://github.com/romanovichim/TonFunClessons_ru/blob/main/10lesson/tenthlesson.md). The standard itself can be found [here](https://github.com/ton-blockchain/TIPs/issues/62).
+獲取集合信息涉及對智能合約進行 GET 請求。在本課程中，我們將考慮從遵循標準的智能合約中獲取信息。關於 NFT 標準的課程可以參考[這裡](https://github.com/romanovichim/TonFunClessons_ru/blob/main/10lesson/tenthlesson.md)。標準本身可以在[這裡](https://github.com/ton-blockchain/TIPs/issues/62)找到。
 
-### What information can be taken according to the NFT collection standard
+### 根據 NFT 集合標準可以獲取哪些信息
 
-A collection smart contract that conforms to the standard must implement the Get method `get_collection_data()` , which will return the address of the collection owner, the content of the collection, and the count of current NFTs in the collection. The function looks like this:
+符合標準的集合智能合約必須實現 `get_collection_data()` 方法，該方法將返回集合所有者的地址、集合的內容以及當前集合中的 NFT 數量。該方法如下：
 
-	(int, cell, slice) get_collection_data() method_id {
-	  var (owner_address, next_item_index, content, _, _) = load_data();
-	  slice cs = content.begin_parse();
-	  return (next_item_index, cs~load_ref(), owner_address);
-	}
+```func
+(int, cell, slice) get_collection_data() method_id {
+  var (owner_address, next_item_index, content, _, _) = load_data();
+  slice cs = content.begin_parse();
+  return (next_item_index, cs~load_ref(), owner_address);
+}
+```
 
-> load_data() unloads data from register c4
+> load_data() 從 c4 寄存器中卸載數據
 
-If we were just executing a request to the contract, we would have to "parse" the slice and other unpleasant things related to types. In `tonutils-go`, there is a `GetCollectionData` function that will allow you not to bother with this, which is what we will use next.
+如果我們只是對合約執行請求，我們將不得不“解析”slice 和其他與類型相關的不愉快事情。在 `tonutils-go` 中，有一個 `GetCollectionData` 函數，將幫助我們簡化這個過程，我們將在接下來使用它。
 
-For example, let's take some collection from some marketplace and just check the information that we get and the information from the marketplace.
+例如，我們從某個市場上選擇一個集合，檢查我們獲取的信息是否與市場上的信息一致。
 
-The address of the collection that I will use in this tutorial:
+我將在本教程中使用的集合地址為：
 
-	EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu
+```
+EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu
+```
 
-Judging by the information from the marketplace, there are 13333 items in the collection at this address, let's check it out
+根據市場上的信息，該地址的集合中有 13333 個元素，我們來驗證一下。
 
-### Getting information about the NFT collection using GO
+### 使用 GO 獲取 NFT 集合信息
 
-Connect to lightserves on the main network:
+連接到主網上的 lightservers：
 
-	func main() {
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
 
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-	}
-
-> This collection is also in the test network, so if you take the test network config, everything will also work
-
-Take the address and use the `GetCollectionData` function to call the get_collection_data() method and convert the data to readable
-
-> Before calling `GetCollectionData` you need to set the `NewCollectionClient` connection
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-		nftColAddr := address.MustParseAddr("EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu")
-
-
-		// get info about our nft's collection
-		collection := nft.NewCollectionClient(api, nftColAddr)
-		collectionData, err := collection.GetCollectionData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-	}
-
-Now `collectionData` stores information about the collection, we will output data from `collectionData` to the console using the `fmt` library.
-
-It should output the following information:
-
-	Collection addr      : EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu
-		content          : http://nft.animalsredlist.com/nfts/collection.json
-		owner            : EQANKN8ZnM0OzYOENTkOEg7VVgFog5fBWdCtqQro1MRmU5_2
-		minted items num : 13333
-
-As we can see the information converge, there are also 13333 items in the collection.
-
-Final `nftcoldata.go` code:
-
-	package main
-
-	import (
-		"context"
-		"fmt"
-
-		"github.com/xssnick/tonutils-go/address"
-		"github.com/xssnick/tonutils-go/liteclient"
-		"github.com/xssnick/tonutils-go/ton"
-		"github.com/xssnick/tonutils-go/ton/nft"
-	)
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-		nftColAddr := address.MustParseAddr("EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu")
-
-		// get info about our nft's collection
-		collection := nft.NewCollectionClient(api, nftColAddr)
-		collectionData, err := collection.GetCollectionData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Collection addr      :", nftColAddr)
-		fmt.Println("    content          :", collectionData.Content.(*nft.ContentOffchain).URI)
-		fmt.Println("    owner            :", collectionData.OwnerAddress.String())
-		fmt.Println("    minted items num :", collectionData.NextItemIndex)
-	}
-	
-	
-## What information can be obtained from a single NFT element
-
-Let's say we want to get the address of the collection element, its content, let's say a link to the picture. And everything seems to be simple, we pull the Get-method and get the information. BUT in [according to the NFT standard in TON] (https://github.com/ton-blockchain/TIPs/issues/62), in this way we will not get the full link, but only a part, the so-called individual element content.
-
-To get the full content (address), you need:
-- by the get-method of the element `get_nft_data()`, we will get the element index and individual content, as well as the initialization sign
-- check if the element is initialized (More about this in lesson 10, where the NFT standard is discussed)
-- if the element is initialized, then by the get-method of the collection `get_nft_content(int index, cell individual_content)`, we get
-full content (full address) on a single element
-
-### Get information about the NFT element using GO
-
-The address of the element that I will use below:
-
-UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH
-
-Let's try to take information about this NFT element.
-
-Establish connection with lightservers:
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-	}
-
-Let's call the get-method of the element `get_nft_data()` and output the received information to the console:
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-
-		nftAddr := address.MustParseAddr("UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH")
-		item := nft.NewItemClient(api, nftAddr)
-
-		nftData, err := item.GetNFTData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("NFT addr         :", nftAddr.String())
-		fmt.Println("    initialized  :", nftData.Initialized)
-		fmt.Println("    owner        :", nftData.OwnerAddress.String())
-		fmt.Println("    index        :", nftData.Index)
-		
-	}
-
-In addition to the information that we displayed, we also have information about the collection, we can get it using the following code:
-
-		// get info about our nft's collection
-		collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
-		
-It remains to check if the element is initialized and call the get-method of the collection `get_nft_content(int index, cell individual_content)` to get a reference to the element.
-
-	// get info about our nft's collection
-	collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
-
-		if nftData.Initialized {
-			// get full nft's content url using collection method that will merge base url with nft's data
-			nftContent, err := collection.GetNFTContent(context.Background(), nftData.Index, nftData.Content)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("    part content :", nftData.Content.(*nft.ContentOffchain).URI)
-			fmt.Println("    full content :", nftContent.(*nft.ContentOffchain).URI)
-		} else {
-			fmt.Println("    empty content")
-		}
-
-
-Final `nftitemdata.go` code:
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-		configUrl := "https://ton-blockchain.github.io/global.config.json"
-
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-
-		api := ton.NewAPIClient(client)
-
-
-		nftAddr := address.MustParseAddr("UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH")
-		item := nft.NewItemClient(api, nftAddr)
-
-		nftData, err := item.GetNFTData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("NFT addr         :", nftAddr.String())
-		fmt.Println("    initialized  :", nftData.Initialized)
-		fmt.Println("    owner        :", nftData.OwnerAddress.String())
-		fmt.Println("    index        :", nftData.Index)
-
-		// get info about our nft's collection
-		collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
-
-		if nftData.Initialized {
-			// get full nft's content url using collection method that will merge base url with nft's data
-			nftContent, err := collection.GetNFTContent(context.Background(), nftData.Index, nftData.Content)
-			if err != nil {
-				panic(err)
-			}
-			fmt.Println("    part content :", nftData.Content.(*nft.ContentOffchain).URI)
-			fmt.Println("    full content :", nftContent.(*nft.ContentOffchain).URI)
-		} else {
-			fmt.Println("    empty content")
-		}
-	}
-
-As a result, you should get the following element: https://nft.animalsredlist.com/nfts/11030.json
-
-## Deploy smart contract collection
-
-After we learned how to look at information about other people's collections and elements, we will try to deploy our collection and element in the test network. Before moving on, I advise you to go through the previous lesson, since I will not dwell on how to create a wallet, create a hexBOC contract form and deploy a contract to a test network here.
-
-Let's analyze what is needed to deploy the collection. The first thing we need is the hexBOC representation of the contract, the second is the initial data for the `c4` register.
-
-Let's start with the second, according to the standard, we will determine the data that needs to be put in `c4`. It is convenient to look at the function that loads data from the [collection contract](https://github.com/ton-blockchain/token-contract/blob/main/nft/nft-collection.fc) example.
-
-	(slice, int, cell, cell, cell) load_data() inline {
-	  var ds = get_data().begin_parse();
-	  return 
-		(ds~load_msg_addr(), ;; owner_address
-		 ds~load_uint(64), ;; next_item_index
-		 ds~load_ref(), ;; content
-		 ds~load_ref(), ;; nft_item_code
-		 ds~load_ref()  ;; royalty_params
-		 );
-	}
-
-Let the address of the owner be the address of the wallet that we will use for deployment, so we will pass the address to the function as an argument:
-
-	func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
-
-	}
-
-It is also necessary to transfer the royalty-free address, which we will transfer in the royalty parameters. In this example, we won't be setting any royalty values, so we'll pass in zeros. (You can read about the piano parameters [here](https://github.com/ton-blockchain/TEPs/blob/afb3b967db3cf693f1b667f771150056d53944d5/text/0066-nft-royalty-standard.md))
-
-
-	func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
-
-		royalty := cell.BeginCell().
-			MustStoreUInt(0, 16).
-			MustStoreUInt(0, 16).
-			MustStoreAddr(royaltyAddr).
-			EndCell()
-
-	}
-
-Now let's collect the content part, it is divided into two cells `collection_content` and `common_content` in accordance with the standard:
-
-	func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
-		royalty := cell.BeginCell().
-			MustStoreUInt(0, 16).
-			MustStoreUInt(0, 16).
-			MustStoreAddr(royaltyAddr).
-			EndCell()
-
-		collectionContent := nft.ContentOffchain{URI: "https://tonutils.com"}
-		collectionContentCell, _ := collectionContent.ContentCell()
-
-		commonContent := nft.ContentOffchain{URI: "https://tonutils.com/nft/"}
-		commonContentCell, _ := commonContent.ContentCell()
-
-		contentRef := cell.BeginCell().
-			MustStoreRef(collectionContentCell).
-			MustStoreRef(commonContentCell).
-			EndCell()
-
-	}
-
-The index will be equal to zero, and for the code we will create a separate function `getNFTItemCode()`, which will simply store the contract code of a separate element in hexBOC format. As a result, we get:
-
-	func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
-
-		royalty := cell.BeginCell().
-			MustStoreUInt(0, 16).
-			MustStoreUInt(0, 16).
-			MustStoreAddr(royaltyAddr).
-			EndCell()
-
-		collectionContent := nft.ContentOffchain{URI: "https://tonutils.com"}
-		collectionContentCell, _ := collectionContent.ContentCell()
-
-		commonContent := nft.ContentOffchain{URI: "https://tonutils.com/nft/"}
-		commonContentCell, _ := commonContent.ContentCell()
-
-		contentRef := cell.BeginCell().
-			MustStoreRef(collectionContentCell).
-			MustStoreRef(commonContentCell).
-			EndCell()
-
-		data := cell.BeginCell().MustStoreAddr(collectionOwnerAddr).
-			MustStoreUInt(0, 64).
-			MustStoreRef(contentRef).
-			MustStoreRef(getNFTItemCode()).
-			MustStoreRef(royalty).
-			EndCell()
-
-		return data
-	}
-
-It remains only to deploy the contract:
-
-	addr, err := w.DeployContract(context.Background(), tlb.MustFromTON("0.02"),
-		msgBody, getNFTCollectionCode(), getContractData(w.Address(), nil), true)
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
 	if err != nil {
 		panic(err)
 	}
 
-Full code [here](https://github.com/xssnick/tonutils-go/blob/master/example/deploy-nft-collection/main.go).
+	api := ton.NewAPIClient(client)
+}
+```
 
-## Mint element to collection
+> 該集合也存在於測試網中，因此如果您使用測試網配置，也會有效。
 
-Adding an element to a collection is called mint. If you look at the [collection contract example](https://github.com/ton-blockchain/token-contract/blob/main/nft/nft-collection.fc) you can see that in order to mint a new NFT item, you need to send internal message.
+獲取集合地址並使用 `GetCollectionData` 函數調用 `get_collection_data()` 方法，將數據轉換為可讀格式：
 
-Respectively:
-- Call the get-method of the collection `get_collection_data()` to get the index we need for the mint
-- Call the collection's get method `get_nft_address_by_index(int ​​index)` to get the address of the NFT element
-- Let's collect the payload (Item index, wallet address, small amount of TON for , content)
-- Send a message to the smart contract address of the collection with our payload
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
 
-Let's start by connecting to light servers:
-
-	func main() {
-		client := liteclient.NewConnectionPool()
-
-		// connect to mainnet lite server
-		err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
-		if err != nil {
-			panic(err)
-		}
-
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
-
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
 	}
 
-We "collect" the wallet, and make a call to `get_collection_data()` to get the index:
+	api := ton.NewAPIClient(client)
 
-	func main() {
-		client := liteclient.NewConnectionPool()
+	nftColAddr := address.MustParseAddr("EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu")
 
-		// connect to mainnet lite server
-		err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
-		if err != nil {
-			panic(err)
-		}
-
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
-		w := getWallet(api)
-
-		collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
-		collection := nft.NewCollectionClient(api, collectionAddr)
-
-		collectionData, err := collection.GetCollectionData(context.Background())
-		if err != nil {
-			panic(err)
-		}
+	// 獲取我們的 NFT 集合的信息
+	collection := nft.NewCollectionClient(api, nftColAddr)
+	collectionData, err := collection.GetCollectionData(context.Background())
+	if err != nil {
+		panic(err)
 	}
 
-> It is important to use the wallet, the address that we put in `c4` when deploying the collection contract, otherwise when minting, an error will occur, since the contract has a check for the address from which you can mint (It looks like this: `throw_unless(401, equal_slices(sender_address, owner_address));`).
+	fmt.Println("Collection addr      :", nftColAddr)
+	fmt.Println("    content          :", collectionData.Content.(*nft.ContentOffchain).URI)
+	fmt.Println("    owner            :", collectionData.OwnerAddress.String())
+	fmt.Println("    minted items num :", collectionData.NextItemIndex)
+}
+```
 
-Now get the element's address by calling the collection's get method `get_nft_address_by_index(int index)` to get the element's NFT address and prepare the payload:
+輸出應如下所示：
 
-	func main() {
-		client := liteclient.NewConnectionPool()
+```
+Collection addr      : EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu
+    content          : http://nft.animalsredlist.com/nfts/collection.json
+    owner            : EQANKN8ZnM0OzYOENTkOEg7VVgFog5fBWdCtqQro1MRmU5_2
+    minted items num : 13333
+```
 
-		// connect to mainnet lite server
-		err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
-		if err != nil {
-			panic(err)
-		}
+可以看到信息是對應的，集合中有 13333 個元素。
 
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
-		w := getWallet(api)
+完整的 `nftcoldata.go` 代碼：
 
-		collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
-		collection := nft.NewCollectionClient(api, collectionAddr)
+```go
+package main
 
-		collectionData, err := collection.GetCollectionData(context.Background())
-		if err != nil {
-			panic(err)
-		}
+import (
+	"context"
+	"fmt"
 
-		nftAddr, err := collection.GetNFTAddressByIndex(context.Background(), collectionData.NextItemIndex)
-		if err != nil {
-			panic(err)
-		}
+	"github.com/xssnick/tonutils-go/address"
+	"github.com/xssnick/tonutils-go/liteclient"
+	"github.com/xssnick/tonutils-go/ton"
+	"github.com/xssnick/tonutils-go/ton/nft"
+)
 
-		mintData, err := collection.BuildMintPayload(collectionData.NextItemIndex, w.Address(), tlb.MustFromTON("0.01"), &nft.ContentOffchain{
-			URI: fmt.Sprint(collectionData.NextItemIndex) + ".json",
-		})
-		if err != nil {
-			panic(err)
-		}
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
+
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
 	}
 
-The only thing left is to send a message from the wallet to the smart contract of the collection and display data about our element (check that everything went right by calling the get-method `get_nft_data()` - let's see if the correct information comes in).
+	api := ton.NewAPIClient(client)
 
-	func main() {
-		client := liteclient.NewConnectionPool()
+	nftColAddr := address.MustParseAddr("EQAA1yvDaDwEK5vHGOXRdtS2MbOVd1-TNy01L1S_t2HF4oLu")
 
-		// connect to mainnet lite server
-		err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
-		if err != nil {
-			panic(err)
-		}
-
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
-		w := getWallet(api)
-
-		collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
-		collection := nft.NewCollectionClient(api, collectionAddr)
-
-		collectionData, err := collection.GetCollectionData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		nftAddr, err := collection.GetNFTAddressByIndex(context.Background(), collectionData.NextItemIndex)
-		if err != nil {
-			panic(err)
-		}
-
-		mintData, err := collection.BuildMintPayload(collectionData.NextItemIndex, w.Address(), tlb.MustFromTON("0.01"), &nft.ContentOffchain{
-			URI: fmt.Sprint(collectionData.NextItemIndex) + ".json",
-		})
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Minting NFT...")
-		mint := wallet.SimpleMessage(collectionAddr, tlb.MustFromTON("0.025"), mintData)
-
-		err = w.Send(context.Background(), mint, true)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Minted NFT:", nftAddr.String(), 0)
-
-		newData, err := nft.NewItemClient(api, nftAddr).GetNFTData(context.Background())
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Println("Minted NFT addr: ", nftAddr.String())
-		fmt.Println("NFT Owner:", newData.OwnerAddress.String())
+	// 獲取我們的 NFT 集合的信息
+	collection := nft.NewCollectionClient(api, nftColAddr)
+	collectionData, err := collection.GetCollectionData(context.Background())
+	if err != nil {
+		panic(err)
 	}
 
-Full code [here](https://github.com/xssnick/tonutils-go/blob/master/example/nft-mint/main.go).
+	fmt.Println("Collection addr      :", nftColAddr)
+	fmt.Println("    content          :", collectionData.Content.(*nft.ContentOffchain).URI)
+	fmt.Println("    owner            :", collectionData.OwnerAddress.String())
+	fmt.Println("    minted items num :", collectionData.NextItemIndex)
+}
+```
 
-## Exercise
+## 單個 NFT 元素可以獲取哪些信息
 
-Deploy your collection and create an NFT item on the testnet, then try to get the information about the collection and the item with the scripts from the beginning of the lesson.
+假設我們想獲取集合元素的地址、其內容（例如圖片的鏈接）。看起來很簡單，我們只需要調用 Get 方法並獲取信息。但根據[NFT 標準](https://github.com/ton-blockchain/TIPs/issues/62)，我們無法獲取完整的鏈接，只能獲取部分內容，即所謂的單個元素內容。
 
-## Conclusion
+要獲取完整內容（地址），需要：
+- 通過元素的 get 方法 `get_nft_data()` 獲取元素索引和個人內容，以及初始化標誌
+- 檢查元素是否已初始化（更多詳情參見第10課，其中討論了 NFT 標準）
+- 如果元素已初始化，則通過集合的 get 方法 `get_nft_content(int index, cell individual_content)` 獲取單個元素的完整內容（完整地址）
 
-I publish new lessons [here](https://t.me/ton_learn), on the [main page](https://github.com/romanovichim/TonFunClessons_ru) there is an address for donations, if you suddenly want to help release new lessons. Separately, I want to thank the developers https://github.com/xssnick/tonutils-go who are doing a great job.
+### 使用 GO 獲取 NFT 元素信息
+
+我將在下面使用的元素地址：
+
+```
+UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH
+```
+
+我們嘗試獲取此 NFT 元素的信息。
+
+建立與 lightservers 的連接：
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
+
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
+	}
+
+	api := ton.NewAPIClient(client)
+}
+```
+
+調用元素的 get 方法 `get_nft_data()` 並將接收到的信息輸出到控制台：
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
+
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
+	}
+
+	api := ton.NewAPIClient(client)
+
+	nftAddr := address.MustParseAddr("UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH")
+	item := nft.NewItemClient(api, nftAddr)
+
+	nftData, err := item.GetNFTData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("NFT addr         :", nftAddr.String())
+	fmt.Println("    initialized  :", nftData.Initialized)
+	fmt.Println("    owner        :", nftData.OwnerAddress.String())
+	fmt.Println("    index        :", nftData.Index)
+}
+```
+
+除了我們顯示的信息外，我們還有關於集合的信息，可以使用以下代碼獲取：
+
+```go
+// 獲取我們的 NFT 集合的信息
+collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
+```
+
+檢查元素是否已初始化，並調用集合的 get 方法 `get_nft_content(int index, cell individual_content)` 獲取元素的鏈接。
+
+```go
+// 獲取我們的 NFT 集合的信息
+collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
+
+if nftData.Initialized {
+	// 使用集合方法獲取完整的 NFT 內容 URL，將基礎 URL 與 NFT 的數據合併
+	nftContent, err := collection.GetNFTContent(context.Background(), nftData.Index, nftData.Content)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("    part content :", nftData.Content.(*nft.ContentOffchain).URI)
+	fmt.Println("    full content :", nftContent.(*nft.ContentOffchain).URI)
+} else {
+	fmt.Println("    empty content")
+}
+```
+
+最終的 `nftitemdata.go` 代碼：
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/xssnick/tonutils-go/address"
+	"github.com/xssnick/tonutils-go/liteclient"
+	"github.com/xssnick/tonutils-go/ton"
+	"github.com/xssnick/tonutils-go/ton/nft"
+)
+
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/global.config.json"
+
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
+	}
+
+	api := ton.NewAPIClient(client)
+
+	nftAddr := address.MustParseAddr("UQBzmkmGYAw3qNEQYddY-FjWRPJRjg7Vv2B1Dns3FrERcaRH")
+	item := nft.NewItemClient(api, nftAddr)
+
+	nftData, err := item.GetNFTData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("NFT addr         :", nftAddr.String())
+	fmt.Println("    initialized  :", nftData.Initialized)
+	fmt.Println("    owner        :", nftData.OwnerAddress.String())
+	fmt.Println("    index        :", nftData.Index)
+
+	// 獲取我們的 NFT 集合的信息
+	collection := nft.NewCollectionClient(api, nftData.CollectionAddress)
+
+	if nftData.Initialized {
+		// 使用集合方法獲取完整的 NFT 內容 URL，將基礎 URL 與 NFT 的數據合併
+		nftContent, err := collection.GetNFTContent(context.Background(), nftData.Index, nftData.Content)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("    part content :", nftData.Content.(*nft.ContentOffchain).URI)
+		fmt.Println("    full content :", nftContent.(*nft.ContentOffchain).URI)
+	} else {
+		fmt.Println("    empty content")
+	}
+}
+```
+
+結果應該是如下元素：https://nft.animalsredlist.com/nfts/11030.json
+
+## 部署智能合約集合
+
+在我們了解了如何查看其他集合和元素的信息後，我們將嘗試在測試網上部署我們的集合和元素。在繼續之前，我建議先瀏覽上一課，因為我不會詳細介紹如何創建錢包、創建 hexBOC 合約形式和在測試網上部署合約。
+
+讓我們分析一下部署集合所需的內容。首先，我們需要合約的 hexBOC 表示，其次是 c4 寄存器的初始數據。
+
+我們從第二步開始，根據標準，我們將確定需要放入 c4 的數據。查看 [collection contract](https://github.com/ton-blockchain/token-contract/blob/main/nft/nft-collection.fc) 的數據加載函數非常方便。
+
+```func
+(slice, int, cell, cell, cell) load_data() inline {
+  var ds = get_data().begin_parse();
+  return 
+	(ds~load_msg_addr(), ;; owner_address
+	 ds~load_uint(64), ;; next_item_index
+	 ds~load_ref(), ;; content
+	 ds~load_ref(), ;; nft_item_code
+	 ds~load_ref()  ;; royalty_params
+	 );
+}
+```
+
+讓集合所有者的地址是我們將用於部署的錢包地址，因此我們將地址作為參數傳遞給函數：
+
+```go
+func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
+	// implementation
+}
+```
+
+同時需要傳遞版權地址，我們將其傳遞到版權參數中。在本示例中，我們不設置任何版權值，因此我們將傳遞零。（您可以在[這裡](https://github.com/ton-blockchain/TEPs/blob/afb3b967db3cf693f1b667f771150056d53944d5/text/0066-nft-royalty-standard.md)閱讀有關版權參數的更多信息）
+
+```go
+func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
+	royalty := cell.BeginCell().
+		MustStoreUInt(0, 16).
+		MustStoreUInt(0, 16).
+		MustStoreAddr(royaltyAddr).
+		EndCell()
+}
+```
+
+現在我們來收集內容部分，它分為兩個單元 `collection_content` 和 `common_content`，根據標準：
+
+```go
+func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
+	royalty := cell.BeginCell().
+		MustStoreUInt(0, 16).
+		MustStoreUInt(0, 16).
+		MustStoreAddr(royaltyAddr).
+		EndCell()
+
+	collectionContent := nft.ContentOffchain{URI: "https://tonutils.com"}
+	collectionContentCell, _ := collectionContent.ContentCell()
+
+	commonContent := nft.ContentOffchain{URI: "https://tonutils.com/nft/"}
+	commonContentCell, _ := commonContent.ContentCell()
+
+	contentRef := cell.BeginCell().
+		MustStoreRef(collectionContentCell).
+		MustStoreRef(commonContentCell).
+		EndCell()
+}
+```
+
+索引將為零，代碼我們將創建一個單獨的 `getNFTItemCode()` 函數，它將存儲單個元素的合約代碼 hexBOC 格式。最終，我們得到：
+
+```go
+func getContractData(collectionOwnerAddr, royaltyAddr *address.Address) *cell.Cell {
+	royalty := cell.BeginCell().
+		MustStoreUInt(0, 16).
+		MustStoreUInt(0, 16).
+		MustStoreAddr(royaltyAddr).
+		EndCell()
+
+	collectionContent := nft.ContentOffchain{URI: "https://tonutils.com"}
+	collectionContentCell, _ := collectionContent.ContentCell()
+
+	commonContent := nft.ContentOffchain{URI: "https://tonutils.com/nft/"}
+	commonContentCell, _ := commonContent.ContentCell()
+
+	contentRef := cell.BeginCell().
+		MustStoreRef(collectionContentCell).
+		MustStoreRef(commonContentCell).
+		EndCell()
+
+	data := cell.BeginCell().MustStoreAddr(collectionOwnerAddr).
+		MustStoreUInt(0, 64).
+		MustStoreRef(contentRef).
+		MustStoreRef(getNFTItemCode()).
+		MustStoreRef(royalty).
+		EndCell()
+
+	return data
+}
+```
+
+只剩下部署合約：
+
+```go
+addr, err := w.DeployContract(context.Background(), tlb.MustFromTON("0.02"),
+	msgBody, getNFTCollectionCode(), getContractData(w.Address(), nil), true)
+if err != nil {
+	panic(err)
+}
+```
+
+完整代碼可在[這裡](https://github.com/xssnick/tonutils-go/blob/master/example/deploy-nft-collection/main.go)找到。
+
+## 鑄造元素到集合
+
+將元素添加到集合稱為鑄造。如果查看 [collection contract example](https://github.com/ton-blockchain/token-contract/blob/main/nft/nft-collection.fc) 可以看到，要鑄造新的 NFT 元素，需要發送內部消息。
+
+因此：
+- 調用集合的 get 方法 `get_collection_data()` 以獲取我們需要的鑄造索引
+- 調用集合的 get 方法 `get_nft_address_by_index(int index)` 以獲取 NFT 元素的地址
+- 構建有效負載（元素索引、錢包地址、小量 TON、內容）
+- 將消息發送到集合的智能合約地址，附上我們的有效負載
+
+首先連接到 light servers：
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+
+	// 連接到主網 lite server
+	err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 ton api lite 連接包裝器
+	api := ton.NewAPIClient(client)
+}
+```
+
+“收集”錢包，調用 `get_collection_data()` 獲取索引：
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+
+	// 連接到主網 lite server
+	err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 ton api lite 連接包裝器
+	api := ton.NewAPIClient(client)
+	w := getWallet(api)
+
+	collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
+	collection := nft.NewCollectionClient(api, collectionAddr)
+
+	collectionData, err := collection.GetCollectionData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+}
+```
+
+> 重要的是要使用我們在部署集合合約時放入 c4 的地址，否則在鑄造時會發生錯誤，因為合約中有檢查可以鑄造的地址（看起來像這樣：`throw_unless(401, equal_slices(sender_address, owner_address));`）。
+
+現在調用集合的 get 方法 `get_nft_address_by_index(int index)` 以獲取元素的 NFT 地址並準備有效負載：
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+
+	// 連接到主網 lite server
+	err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 ton api lite 連接包裝器
+	api := ton.NewAPIClient(client)
+	w := getWallet(api)
+
+	collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
+	collection := nft.NewCollectionClient(api, collectionAddr)
+
+	collectionData, err := collection.GetCollectionData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	nftAddr, err := collection.GetNFTAddressByIndex(context.Background(), collectionData.NextItemIndex)
+	if err != nil {
+		panic(err)
+	}
+
+	mintData, err := collection.BuildMintPayload(collectionData.NextItemIndex, w.Address(), tlb.MustFromTON("0.01"), &nft.ContentOffchain{
+		URI: fmt.Sprint(collectionData.NextItemIndex) + ".json",
+	})
+	if err != nil {
+		panic(err)
+	}
+}
+```
+
+只剩下將消息從錢包發送到集合的智能合約並顯示我們元素的信息（通過調用 get 方法 `get_nft_data()` 檢查一切是否正確 - 查看是否收到正確的信息）。
+
+```go
+func main() {
+	client := liteclient.NewConnectionPool()
+
+	// 連接到主網 lite server
+	err := client.AddConnection(context.Background(), "135.181.140.212:13206", "K0t3+IWLOXHYMvMcrGZDPs+pn58a17LFbnXoQkKc2xw=")
+	if err != nil {
+		panic(err)
+	}
+
+	// 初始化 ton api lite 連接包裝器
+	api := ton.NewAPIClient(client)
+	w := getWallet(api)
+
+	collectionAddr := address.MustParseAddr("EQCSrRIKVEBaRd8aQfsOaNq3C4FVZGY5Oka55A5oFMVEs0lY")
+	collection := nft.NewCollectionClient(api, collectionAddr)
+
+	collectionData, err := collection.GetCollectionData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	nftAddr, err := collection.GetNFTAddressByIndex(context.Background(), collectionData.NextItemIndex)
+	if err != nil {
+		panic(err)
+	}
+
+	mintData, err := collection.BuildMintPayload(collectionData.NextItemIndex, w.Address(), tlb.MustFromTON("0.01"), &nft.ContentOffchain{
+		URI: fmt.Sprint(collectionData.NextItemIndex) + ".json",
+	})
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Minting NFT...")
+	mint := wallet.SimpleMessage(collectionAddr, tlb.MustFromTON("0.025"), mintData)
+
+	err = w.Send(context.Background(), mint, true)
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Minted NFT:", nftAddr.String(), 0)
+
+	newData, err := nft.NewItemClient(api, nftAddr).GetNFTData(context.Background())
+	if err != nil {
+		panic(err)
+	}
+
+	fmt.Println("Minted NFT addr: ", nftAddr.String())
+	fmt.Println("NFT Owner:", newData.OwnerAddress.String())
+}
+```
+
+完整代碼可在[這裡](https://github.com/xssnick/tonutils-go/blob/master/example/nft-mint/main.go)找到。
+
+## 練習
+
+在測試網上部署您的集合並創建一個 NFT 元素，然後嘗試使用課程開頭的腳本獲取集合和元素的信息。
+
+## 結論
+
+我會在[這裡](https://t.me/ton_learn)發布新課程，在[主頁](https://github.com/romanovichim/TonFunClessons_ru)上有捐款地址，如果您希望幫助發布新課程。特別感謝 https://github.com/xssnick/tonutils-go 的開發者，他們做了出色的工作。

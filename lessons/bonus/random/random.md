@@ -1,712 +1,372 @@
-# Smart Contract Lottery/Raffle
+# 智能合約抽獎教學
 
-In this tutorial, we will analyze the lottery/raffle smart contract. A smart contract is good because:
-- Properly used by random. Learn more about the technical part of randomness in TON [here](https://docs.ton.org/develop/smart-contracts/guidelines/random-number-generation)
-- there are important contract balance management mechanics that can be applied in your smart contracts
-- convenient grouping and structure of the project, the pattern of which is worth adopting.
+在這篇教學中，我們將分析一個智能合約抽獎系統。這個智能合約具有以下優點：
+- 正確使用隨機數。更多關於TON中的隨機數技術細節，請參考[這裡](https://docs.ton.org/develop/smart-contracts/guidelines/random-number-generation)
+- 具備重要的合約餘額管理機制，可應用於您的智能合約中
+- 項目的結構和分組方便，值得借鑑
 
+## 隨機數問題
 
-## Random problem
+隨機數生成在很多不同的項目中可能會需要。在 FunC 文檔中有 `random()` 函數，但在真實項目中不能使用！其結果很容易被預測，除非應用一些額外的技巧。
 
-Random number generation - may be needed in many different projects. There is a `random()` function in the FunC documentation, but you can't use it in real projects!!! Its result can be easily predicted if you do not apply some additional tricks.
+為了使隨機數生成不可預測，可以將當前的邏輯時間添加到種子中，使不同的交易擁有不同的種子和結果。
 
-To make the random number generation unpredictable, you can add the current logical time to the seed so that different transactions have different seeds and results.
+您可以使用 `randomize_lt()` 來實現，例如：
 
-You can do this with `randomize_lt()`, for example:
+```func
+randomize_lt();
+int x = random(); ;; 用戶無法預測這個數字
+```
 
-	randomize_lt();
-	int x = random(); ;; users can't predict this number
-	
-Также можно использовать `randomize()`, прокинув туда несколько парметров включая в себя логическое время.
+也可以使用 `randomize()`，傳遞幾個參數，包括邏輯時間。
 
-	() randomize(int x) impure asm "ADDRAND";
-	
-In this article, we will look at the draw contract that uses `randomize()`
+```func
+() randomize(int x) impure asm "ADDRAND";
+```
 
-## Top-level overview
+在本文中，我們將介紹使用 `randomize()` 的抽獎合約。
 
-### How it works?
+## 高層概述
 
-The contract only accepts messages with 1 TON (other amounts will be returned). The smart contract generates a random number from 0 to 10000 to determine if you win or not.
+### 如何運作？
 
-If a person wins, their winnings are reduced by our commission of 10%. The rest of the contract balance remains intact. The winner will receive a message about the win in the comment to the transaction.
+合約只接受1 TON的消息（其他金額將被退回）。智能合約生成0到10000之間的隨機數來決定是否中獎。
 
-### Probability
+如果用戶中獎，其獎金將扣除我們10%的佣金。合約餘額的其他部分保持不變。獲獎者將在交易評論中收到中獎消息。
 
-- 0.1% to win the jackpot (half of the contract balance) [0; 10)
-- 9.9%, to win 5 TON. [10; 1000)
-- 10% for winning 2 TON. [1000; 2000)
+### 中獎概率
 
-If there is no win, nothing happens. [2000; 9999]
+- 0.1% 中頭獎（合約餘額的一半）[0; 10)
+- 9.9% 中5 TON獎金 [10; 1000)
+- 10% 中2 TON獎金 [1000; 2000)
 
-Contract code - https://github.com/Vudi/new-year-ruffle/tree/main
+如果沒有中獎，則不會發生任何事情。[2000; 9999]
 
-### Smart contract structure
+合約代碼 - https://github.com/Vudi/new-year-ruffle/tree/main
 
-A smart contract is a `recv_internal` internal message handler, which, if the message body is empty, starts a lottery/draw or fulfills one of the `op` conditions:
-- `op == op::add_balance()` adding a balance, in case the contract runs out of money
-- `op == op::maintain()` allows you to send an internal message from the contract with a different mode, i.e. it allows you to manage the balance of the smart contract, and also if it allows you to destroy it (message with `mode == 128 + 32` )
-- `op == op::withdraw()` allows you to get part of the money from the smart contract - the accumulated commission
+### 智能合約結構
 
-## Smart contract style
+智能合約是一個 `recv_internal` 內部消息處理器，當消息體為空時啟動抽獎/彩票，或者執行以下 `op` 條件之一：
+- `op == op::add_balance()` 增加餘額，以防合約中的資金用完
+- `op == op::maintain()` 允許從合約發送具有不同模式的內部消息，即允許管理智能合約的餘額，也可以允許銷毀合約（消息模式為 `128 + 32`）
+- `op == op::withdraw()` 允許提取部分資金——積累的佣金
 
-The smart contract we are considering has a good style:
-- the smart contract is well-spaced into several files, so that it is very convenient to read
-- work with the storage (we are talking about the `c4` register, of course) is combined with global variables, which again improves the readability of the code, making the smart contract understandable
+## 智能合約風格
 
-The `op` commands and the frequently used 1 TON variable are moved to a separate `const.func` file:
+我們正在考察的智能合約具有良好的風格：
+- 智能合約被巧妙地分成多個文件，使其非常易於閱讀
+- 與存儲（主要是 `c4` 寄存器）相結合的全局變量改善了代碼的可讀性，使智能合約更加易於理解
 
-	int op::maintain() asm "1001 PUSHINT";
-	int op::withdraw() asm "1002 PUSHINT";
-	int op::add_balance() asm "1003 PUSHINT";
+`op` 指令和常用的1 TON變量被移至單獨的 `const.func` 文件：
 
-	int exit::invalid_bet() asm "2001 PUSHINT";
+```func
+int op::maintain() asm "1001 PUSHINT";
+int op::withdraw() asm "1002 PUSHINT";
+int op::add_balance() asm "1003 PUSHINT";
 
-	int 1ton() asm "1000000000 PUSHINT";
+int exit::invalid_bet() asm "2001 PUSHINT";
 
-The `admin.func` file contains admin commands, `adm::maintain`, which allows you to send a message from a smart contract with any mode - that is, it allows you to manage the balance of a smart contract:
+int 1ton() asm "1000000000 PUSHINT";
+```
 
-	() adm::maintain(slice in_msg_body) impure inline_ref {
-		int mode = in_msg_body~load_uint(8);
-		send_raw_message(in_msg_body~load_ref(), mode);    
-	}
-	
-And `adm::withdraw()` allowing you to withdraw some of the money in a convenient way:
+`admin.func` 文件包含管理命令，例如 `adm::maintain`，允許以任何模式從智能合約發送消息，從而管理智能合約的餘額：
 
-	() adm::withdraw() impure inline_ref {
-		cell body = begin_cell()
-			.store_uint(0, 32)
-			.store_slice(msg::commission_withdraw())
-			.end_cell();
+```func
+() adm::maintain(slice in_msg_body) impure inline_ref {
+    int mode = in_msg_body~load_uint(8);
+    send_raw_message(in_msg_body~load_ref(), mode);    
+}
+```
 
-		cell msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_slice(db::admin_addr)
-			.store_coins(db::service_balance)
-			.store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			.store_ref(body)
-			.end_cell();
+以及 `adm::withdraw()`，允許方便地提取部分資金：
 
-		db::service_balance = 0;
-		send_raw_message(msg, 0);
-	}
-	
-The smart contract sends messages on lose and win, they are placed in a separate `msg.func` file, note that they are of type `slice`:
+```func
+() adm::withdraw() impure inline_ref {
+    cell body = begin_cell()
+        .store_uint(0, 32)
+        .store_slice(msg::commission_withdraw())
+        .end_cell();
 
-	slice msg::commission_withdraw()    asm "<b 124 word Withdraw commission| $, b> <s PUSHSLICE";
-	slice msg::jackpot()                asm "<b 124 word Congrats! You have won jackpot!| $, b> <s PUSHSLICE";
-	slice msg::x2()                     asm "<b 124 word Congrats! You have won x2!| $, b> <s PUSHSLICE";
-	slice msg::x5()                     asm "<b 124 word Congrats! You have won x5!| $, b> <s PUSHSLICE";
-	
-`game.func` contains the drawing/lottery logic, we will consider the code of this file in detail, but later. The smart contract provides a Get method that returns information from the `c4` register of the smart contract. This method is stored in the `get-methods.func` file:
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(db::admin_addr)
+        .store_coins(db::service_balance)
+        .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_ref(body)
+        .end_cell();
 
-	(int, int, (int, int), int, int) get_info() method_id {
-		init_data();
-		return (db::available_balance, db::service_balance, parse_std_addr(db::admin_addr), db::last_number, db::hash);
-	}
-	
-And finally, work with the storage in the `storage.func` file. It is important to note here that the data is not permanently stored in register c4, but first it is stored in global variables, and then at the end of some logical code, it is stored in the register using the `pack_data()` function:
+    db::service_balance = 0;
+    send_raw_message(msg, 0);
+}
+```
 
-	global int init?;
+智能合約在輸和贏時發送消息，這些消息放在單獨的 `msg.func` 文件中，注意它們的類型是 `slice`：
 
-	global int db::available_balance;
-	global int db::service_balance;
-	global slice db::admin_addr;
-	global int db::last_number;
-	global int db::hash;
+```func
+slice msg::commission_withdraw()    asm "<b 124 word Withdraw commission| $, b> <s PUSHSLICE";
+slice msg::jackpot()                asm "<b 124 word Congrats! You have won jackpot!| $, b> <s PUSHSLICE";
+slice msg::x2()                     asm "<b 124 word Congrats! You have won x2!| $, b> <s PUSHSLICE";
+slice msg::x5()                     asm "<b 124 word Congrats! You have won x5!| $, b> <s PUSHSLICE";
+```
 
-
-	() init_data() impure {
-		ifnot(null?(init?)) {
-			throw(0x123);
-		}
-
-		slice ds = get_data().begin_parse();
+`game.func` 包含抽獎/彩票的邏輯，我們稍後將詳細討論這個文件的代碼。智能合約提供了一個Get方法，返回來自智能合約 `c4` 寄存器的信息。這個方法存儲在 `get-methods.func` 文件中：
 
-		db::available_balance = ds~load_coins();
-		db::service_balance = ds~load_coins();
-		db::admin_addr = ds~load_msg_addr();
-		db::last_number = ds~load_uint(64);
-		db::hash = slice_empty?(ds) ? 0 : ds~load_uint(256);
+```func
+(int, int, (int, int), int, int) get_info() method_id {
+    init_data();
+    return (db::available_balance, db::service_balance, parse_std_addr(db::admin_addr), db::last_number, db::hash);
+}
+```
 
-		init? = true;
-	}
+最後，`storage.func` 文件中的存儲操作。需要注意的是，數據不會永久存儲在 `c4` 寄存器中，而是先存儲在全局變量中，然後在某些邏輯代碼結束時，通過 `pack_data()` 函數存儲到寄存器中：
 
-	() pack_data() impure {
-		set_data(
-			begin_cell()
-				.store_coins(db::available_balance)
-				.store_coins(db::service_balance)
-				.store_slice(db::admin_addr)
-				.store_uint(db::last_number, 64)
-				.store_uint(db::hash, 256)
-			.end_cell()
-		);
-	}
-	
-## Разберем recv_internal()
-
-Файл `main.fc` начинается с импорта файлов, по которым мы прошлись выше:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+```func
+global int init?;
 
-	}
+global int db::available_balance;
+global int db::service_balance;
+global slice db::admin_addr;
+global int db::last_number;
+global int db::hash;
 
-We get the message and use the [slice_hash](https://docs.ton.org/develop/func/stdlib#slice_hash) function to create a hash, which we will use for randomization. Also, as you remember, any message starts with flags, let's do a little check:
 
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-	}
-
-We initialize the data using a helper function from the `storage.func` file and here we get the address from the message:
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-	}
-	
-It seems that it would be logical to get `op` next, but for the convenience of using a smart contract, the main functionality is used without `op`, so the user simply sends an empty message to the contract and the draw / lottery begins. To implement such functionality, we simply check the remaining message, if it is empty, we start the game.
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-	}
-	
-Inside the game function, we will change the data that will later need to be stored in the constant data storage register `c4`, global variables will change inside the function, and in `recv_internal()` we save:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-	}
-	
-Here the question may arise why an exception is thrown after everything has worked correctly. According to the documentation for [TVM clause 4.5.1](https://ton.org/tvm.pdf) there are reserved codes 0-31 for exceptions, which are the same as [exit_code](https://docs.ton.org/ learn/tvm-instructions/tvm-exit-codes), which means 0 is the standard success exit code.
-
-Then everything is simple, `op`, the meaning of which we have analyzed above, the final code of `main.func`:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-
-		int op = in_msg_body~load_uint(32);
-		int is_admin = equal_slices(sender_addr, db::admin_addr);
-		if (op == op::add_balance()) {
-			db::available_balance += msg_value;
-			pack_data();
-			throw(0);
-		}
-
-		if (op == op::maintain()) {
-			throw_if(0xfffe, is_admin == 0);
-			adm::maintain(in_msg_body);
-			throw(0);
-		}
-
-		if (op == op::withdraw()) {
-			throw_if(0xfffd, is_admin == 0);
-			adm::withdraw();
-			pack_data();
-			throw(0);
-		}
-
-		throw(0xffff);
-	}
-
-## Parse game.func
-
-Finally we got to the logic of the game, the `game.func` file starts with a helper function for paying a prize:
-
-	() game::payout(slice sender_addr, int amount, slice msg) impure inline_ref {
-		cell body = begin_cell()
-			.store_uint(0, 32)
-			.store_slice(msg)
-			.end_cell();
-
-		cell msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_slice(sender_addr)
-			.store_coins(amount)
-			.store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			.store_ref(body)
-			.end_cell();
-
-		send_raw_message(msg, 0);
-	}  
-	
-The game itself begins with checking that the value sent to the contract is equal to `1 TON`:
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-	}
-
-Next, a hash for the random is collected, it is collected from the current time, the hash from the `c4` register, the hash formed in `recv_internal` from the message and `cur_lt()` - the logical time of the current transaction:
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-		int new_hash = slice_hash(
-			begin_cell()
-				.store_uint(db::hash, 256)
-				.store_uint(hash, 256)
-				.store_uint(cur_lt(), 64)
-				.store_uint(now(), 64)
-			.end_cell()
-			.begin_parse()
-		);
-	}
-	
-Using a hash, you can generate a random, but before generating a random using the `rand()` function, we randomize the hash using [randomize](https://docs.ton.org/develop/func/stdlib/#randomize).
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-		int new_hash = slice_hash(
-			begin_cell()
-				.store_uint(db::hash, 256)
-				.store_uint(hash, 256)
-				.store_uint(cur_lt(), 64)
-				.store_uint(now(), 64)
-			.end_cell()
-			.begin_parse()
-		);
-
-		randomize(new_hash);
-
-	}
-
-> I note that this is one of the possible variations in the implementation of randomness, you can read about randomness in the documentation - https://docs.ton.org/develop/smart-contracts/guidelines/random-number-generation
-
-To implement the probability of winning, a number from 0 to 10000 is generated, everything is simple here, we look at what percentile the number fell into and, depending on this, send or not send the winnings:
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-		int new_hash = slice_hash(
-			begin_cell()
-				.store_uint(db::hash, 256)
-				.store_uint(hash, 256)
-				.store_uint(cur_lt(), 64)
-				.store_uint(now(), 64)
-			.end_cell()
-			.begin_parse()
-		);
-
-		randomize(new_hash);
-		db::hash = new_hash;
-
-		int number = rand(10000); ;; [0; 10000)
-		db::last_number = number;
-		db::available_balance += 1ton();
-
-		if (number < 10) { ;; win 1/2 available balance
-			int win = db::available_balance / 2;
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
-
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
-
-			game::payout(sender_addr, win, msg::jackpot());
-
-			return ();
-		}
-
-		if (number < 1000) { ;; win x5
-			int win = 5 * 1ton();
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
-
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
-			game::payout(sender_addr, win, msg::x5());
-
-			return ();
-		}
-
-		if (number < 2000) { ;; win x2
-			int win = 2 * 1ton();
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
-
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
-			game::payout(sender_addr, win, msg::x2());
-
-			return ();
-		}
-
-	}
-
-## Conclusion
-
-I write similar tutorials and analyzes on the TON network in my channel - https://t.me/ton_learn . I will be glad to your subscription.
-
-
-
-Смарт-контракт представляет собой обработчик внутренних сообщений `recv_internal`, который если тело сообщения пустое, запускает лоттерею/розыгрыш или же выполняет одно из условий по `op`:
-- `op == op::add_balance()` добавление баланса, на случай если в контракте закончаться деньги
-- `op == op::maintain()` позволяет отправить из контракта внутренее сообщение с разным режимом, т.е позволяет управлять балансом смарт-контракта, а также если что позволит его уничтожить(сообщение с `mode == 128 + 32`)
-- `op == op::withdraw()`  позволяет достать часть денег из смарт-контракта - накопленную комиссию
-
-## Стилистика смарт-контракта
-
-В смарт-контракте, который мы рассматриваем, хорошая стилистика:
-- смарт-контракт грамотно разнесен на несколько файлов, таким образом, что его очень удобно читать
-- работа с хранилищем(речь о регистре `с4` конечно же) комбинируется с глобальными переменными, что опять же улучшает читаемость кода, делая смарт-контракт понятным
-
-Команды `op` и часто используемая переменная в 1 TON вынесена в отдельный файл `const.func`:
-
-	int op::maintain() asm "1001 PUSHINT";
-	int op::withdraw() asm "1002 PUSHINT";
-	int op::add_balance() asm "1003 PUSHINT";
-
-	int exit::invalid_bet() asm "2001 PUSHINT";
-
-	int 1ton() asm "1000000000 PUSHINT";
-
-В файл  `admin.func` вынесены админские команды, `adm::maintain`, которая позволяет отправить сообщение от смарт-контракта с любым mode - т.е позволяет управлять балансом смарт-контракта:
-
-	() adm::maintain(slice in_msg_body) impure inline_ref {
-		int mode = in_msg_body~load_uint(8);
-		send_raw_message(in_msg_body~load_ref(), mode);    
-	}
-	
-И `adm::withdraw()` позволяющая вытащить часть денег удобным способом:
-
-	() adm::withdraw() impure inline_ref {
-		cell body = begin_cell()
-			.store_uint(0, 32)
-			.store_slice(msg::commission_withdraw())
-			.end_cell();
-
-		cell msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_slice(db::admin_addr)
-			.store_coins(db::service_balance)
-			.store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			.store_ref(body)
-			.end_cell();
-
-		db::service_balance = 0;
-		send_raw_message(msg, 0);
-	}
-	
-Смарт-контракт отправляет сообщения при пройгрыше и победе, они вынесенны в отдельный файл `msg.func`, заметьте, что они являются типом `slice`:
-
-	slice msg::commission_withdraw()    asm "<b 124 word Withdraw commission| $, b> <s PUSHSLICE";
-	slice msg::jackpot()                asm "<b 124 word Congrats! You have won jackpot!| $, b> <s PUSHSLICE";
-	slice msg::x2()                     asm "<b 124 word Congrats! You have won x2!| $, b> <s PUSHSLICE";
-	slice msg::x5()                     asm "<b 124 word Congrats! You have won x5!| $, b> <s PUSHSLICE";
-	
-В `game.func` расположена логика розыгрыша/лотереи, код данного файла мы рассмотрим детально, но позже. В смарт-контракте предусмотрен Get-метод, который возвращает информацию из регистра `с4` смарт-контракта. Хранится этот метод в файле `get-methods.func`: 
-
-	(int, int, (int, int), int, int) get_info() method_id {
-		init_data();
-		return (db::available_balance, db::service_balance, parse_std_addr(db::admin_addr), db::last_number, db::hash);
-	}
-	
-И наконец-то работа с хранилищем в файле `storage.func`. Здесь важно отметить, что данные не сохраняются постоянно в регистр с4, а сначала они сохраняются в глобальные переменные, а потом в конце некоторого логического кода происходит сохранение в регистр c помощью функции `pack_data()`:
-
-	global int init?;
-
-	global int db::available_balance;
-	global int db::service_balance;
-	global slice db::admin_addr;
-	global int db::last_number;
-	global int db::hash;
-
-
-	() init_data() impure {
-		ifnot(null?(init?)) {
-			throw(0x123);
-		}
-
-		slice ds = get_data().begin_parse();
-
-		db::available_balance = ds~load_coins();
-		db::service_balance = ds~load_coins();
-		db::admin_addr = ds~load_msg_addr();
-		db::last_number = ds~load_uint(64);
-		db::hash = slice_empty?(ds) ? 0 : ds~load_uint(256);
-
-		init? = true;
-	}
-
-	() pack_data() impure {
-		set_data(
-			begin_cell()
-				.store_coins(db::available_balance)
-				.store_coins(db::service_balance)
-				.store_slice(db::admin_addr)
-				.store_uint(db::last_number, 64)
-				.store_uint(db::hash, 256)
-			.end_cell()
-		);
-	}
-	
-## Разберем recv_internal()
-
-Файл `main.fc` начинается с импорта файлов, по которым мы прошлись выше:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-
-	}
-
-Достаем сообщение и функцией [slice_hash](https://docs.ton.org/develop/func/stdlib#slice_hash) создаем хэш, который далее будем использовать для рандома. Также как вы помните, любое сообщение начинается с флагов, сделаем небольшую проверку:
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-	}
-
-Инициализируем данные с помощью вспомогательной функции из файла `storage.func` и здесь же достанем адрес из сообщения:
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-	}
-	
-Кажется, что дальше логично было бы достать `op`, но для удобства использования смарт-контракта, основной функционал используется без `op`, таким образом пользователь просто отправляет пустое сообщение в контракт и розыгрыш/лотерея начинается. Чтобы реализовать подобный функционал, просто проверяем оставшееся сообщение, если оно пустое, запускаем игру.
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-	}
-	
-Внутри функции игры мы будем менять данные, которые позже нужно будет сохранить в регистр хранения постоянных данных `с4`, внутри функции менятются глобальные переменные, а в `recv_internal()` мы сохраняем:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-	}
-	
-Здесь может возникнуть вопрос, зачем вызывается исключение, после того как все отработало правильно. В соответствии с документацией по [TVM пункт 4.5.1](https://ton.org/tvm.pdf) для исключений есть зарезервированные коды 0–31, совпадающие с [exit_code](https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes), а значит 0 -  cтандартный код завершения успешного выполнения.
-
-Дальше все просто, `op`, смысл которых мы разобрали выше, итоговый код `main.func`:
-
-	#include "lib/stdlib.func";
-	#include "struct/const.func";
-	#include "struct/storage.func";
-	#include "struct/msg.func";
-	#include "struct/game.func";
-	#include "struct/admin.func";
-	#include "struct/get-methods.func";
-
-
-	() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
-		slice cs = in_msg_full.begin_parse();
-		int hash = slice_hash(cs); 
-		throw_if(0, cs~load_uint(4) & 1);
-
-		init_data();
-
-		slice sender_addr = cs~load_msg_addr();
-
-		if (in_msg_body.slice_empty?()) {
-			game::start(sender_addr, msg_value, hash);
-			pack_data();
-			throw(0);
-		}
-
-		int op = in_msg_body~load_uint(32);
-		int is_admin = equal_slices(sender_addr, db::admin_addr);
-		if (op == op::add_balance()) {
-			db::available_balance += msg_value;
-			pack_data();
-			throw(0);
-		}
-
-		if (op == op::maintain()) {
-			throw_if(0xfffe, is_admin == 0);
-			adm::maintain(in_msg_body);
-			throw(0);
-		}
-
-		if (op == op::withdraw()) {
-			throw_if(0xfffd, is_admin == 0);
-			adm::withdraw();
-			pack_data();
-			throw(0);
-		}
-
-		throw(0xffff);
-	}
-
-## Разберем game.func
-
-Наконец-то мы добрались до логики игры, файл `game.func` начинается со вспомогательной функции выплаты приза:
-
-	() game::payout(slice sender_addr, int amount, slice msg) impure inline_ref {
-		cell body = begin_cell()
-			.store_uint(0, 32)
-			.store_slice(msg)
-			.end_cell();
-
-		cell msg = begin_cell()
-			.store_uint(0x18, 6)
-			.store_slice(sender_addr)
-			.store_coins(amount)
-			.store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			.store_ref(body)
-			.end_cell();
-
-		send_raw_message(msg, 0);
-	}  
-	
-Сама же игра начинается с проверки, что значание присланное в контракт равно `1 TON`:
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-	}
-
-Далее собирается хэш для рандома, собирается он из текущего времени, хэша из регистра `с4`, хэша сформированного в `recv_internal` из сообщения и `cur_lt()` - логического времени текущей транзакции:
-
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-		int new_hash = slice_hash(
-			begin_cell()
-				.store_uint(db::hash, 256)
-				.store_uint(hash, 256)
-				.store_uint(cur_lt(), 64)
-				.store_uint(now(), 64)
-			.end_cell()
-			.begin_parse()
-		);
-	}
-	
-С помощью хэша можно сформировать рандом, но прежде чем генерировать рандом с помощью функции `rand()` рандомизируем хэш с помощью [randomize](https://docs.ton.org/develop/func/stdlib/#randomize).
+() init_data() impure {
+    ifnot(null?(init?)) {
+        throw(0x123);
+    }
 
+    slice ds = get_data().begin_parse();
+
+    db::available_balance = ds~load_coins();
+    db::service_balance = ds~load_coins();
+    db::admin_addr = ds~load_msg_addr();
+    db::last_number = ds~load_uint(64);
+    db::hash = slice_empty?(ds) ? 0 : ds~load_uint(256);
+
+    init? = true;
+}
+
+() pack_data() impure {
+    set_data(
+        begin_cell()
+            .store_coins(db::available_balance)
+            .store_coins(db::service_balance)
+            .store_slice(db::admin_addr)
+            .store_uint(db::last_number, 64)
+            .store_uint(db::hash, 256)
+        .end_cell()
+    );
+}
+```
+
+## 分析 recv_internal()
+
+`main.fc` 文件開始於導入上述文件：
+
+```func
+#include "lib/stdlib.func";
+#include "struct/const.func";
+#include "struct/storage.func";
+#include "struct/msg.func";
+#include "struct/game.func";
+#include "struct/admin.func";
+#include "struct/get-methods.func";
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+
+}
+```
+
+我們獲取消息並使用 [slice_hash](https://docs.ton.org/develop/func/stdlib#slice_hash) 函數創建一個哈希，稍後將用於隨機數。同時，任何消息都以標誌開頭，讓我們進行一些檢查：
+
+```func
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int hash = slice_hash(cs); 
+    throw_if(0, cs~load_uint(4) & 1);
+
+}
+```
+
+使用 `storage.func` 文件中的輔助函數初始化數據，並從消息中獲取地址：
+
+```func
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int hash = slice_hash(cs); 
+    throw_if(0, cs~load_uint(4) & 1);
+
+    init_data();
+
+    slice sender_addr = cs~load_msg_addr();
+
+}
+```
+
+接下來，我們將進行 `op` 檢查，但為了方便使用智能合約，主要功能在沒有 `op` 的情況下使用，因此用戶只需發送空消息到合約即可啟動抽獎。為了實現這樣的功能，我們只需檢查剩餘消息，若為空則啟動遊戲。
+
+```func
+#include "lib/stdlib.func";
+#include "struct/const.func";
+#include "struct/storage.func";
+#include "struct/msg.func";
+#include "struct/game.func";
+#include "struct/admin.func";
+#include "struct/get-methods.func";
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int hash = slice_hash(cs); 
+    throw_if(0, cs~load_uint(4) & 1);
+
+    init_data();
+
+    slice sender_addr = cs~load_msg_addr();
+
+    if (in_msg_body.slice_empty?()) {
+        game::start(sender_addr, msg_value, hash);
+        pack_data();
+        throw(0);
+    }
+}
+```
+
+在遊戲函數內，我們會改變數據，這些數據稍後需要存儲在常量數據存儲寄存器 `c4` 中，函數內的全局變量會改變，在 `recv_internal()` 中我們保存：
+
+```func
+#include "lib/stdlib.func";
+#include "struct/const.func";
+#include "struct/storage.func";
+#include "struct/msg.func";
+#include "struct/game.func";
+#include "struct/admin.func";
+#include "struct/get-methods.func";
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int hash = slice_hash(cs); 
+    throw_if(0, cs~load_uint(4) & 1);
+
+    init_data();
+
+    slice sender_addr = cs~load_msg_addr();
+
+    if (in_msg_body.slice_empty?()) {
+        game::start(sender_addr, msg_value, hash);
+        pack_data();
+        throw(0);
+    }
+}
+```
+
+這裡可能會產生一個問題，為什麼在一切都正常工作的情況下拋出異常。根據 [TVM 4.5.1 條款](https://ton.org/tvm.pdf) 文檔，0-31 是為異常保留的代碼，這些代碼與 [exit_code](https://docs.ton.org/learn/tvm-instructions/tvm-exit-codes) 相同，0 是標準的成功退出代碼。
+
+然後一切都很簡單，`op`，我們已經分析了其意義，`main.func` 的最終代碼：
+
+```func
+#include "lib/stdlib.func";
+#include "struct/const.func";
+#include "struct/storage.func";
+#include "struct/msg.func";
+#include "struct/game.func";
+#include "struct/admin.func";
+#include "struct/get-methods.func";
+
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    slice cs = in_msg_full.begin_parse();
+    int hash = slice_hash(cs); 
+    throw_if(0, cs~load_uint(4) & 1);
+
+    init_data();
+
+    slice sender_addr = cs~load_msg_addr();
+
+    if (in_msg_body.slice_empty?()) {
+        game::start(sender_addr, msg_value, hash);
+        pack_data();
+        throw(0);
+    }
+
+    int op = in_msg_body~load_uint(32);
+    int is_admin = equal_slices(sender_addr, db::admin_addr);
+    if (op == op::add_balance()) {
+        db::available_balance += msg_value;
+        pack_data();
+        throw(0);
+    }
+
+    if (op == op::maintain()) {
+        throw_if(0xfffe, is_admin == 0);
+        adm::maintain(in_msg_body);
+        throw(0);
+    }
+
+    if (op == op::withdraw()) {
+        throw_if(0xfffd, is_admin == 0);
+        adm::withdraw();
+        pack_data();
+        throw(0);
+    }
+
+    throw(0xffff);
+}
+```
+
+## 分析 game.func
+
+終於到達了遊戲邏輯，`game.func` 文件以輔助函數支付獎金開始：
+
+```func
+() game::payout(slice sender_addr, int amount, slice msg) impure inline_ref {
+    cell body = begin_cell()
+        .store_uint(0, 32)
+        .store_slice(msg)
+        .end_cell();
+
+    cell msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(sender_addr)
+        .store_coins(amount)
+        .store_uint(1, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_ref(body)
+        .end_cell();
+
+    send_raw_message(msg, 0);
+}  
+```
+
+遊戲本身從檢查發送到合約的金額是否等於 `1 TON` 開始：
+
+```func
+() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
+    throw_unless(exit::invalid_bet(), msg_value == 1ton());
+}
+```
+
+接下來，組合隨機數的哈希值，該哈希值由當前時間、`c4` 寄存器中的哈希、在 `recv_internal` 中從消息中生成的哈希和 `cur_lt()`（當前交易的邏輯時間）組成：
+
+```func
+() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
+    throw_unless(exit::invalid_bet(), msg_value == 1ton());
+    int new_hash = slice_hash(
+        begin_cell()
+            .store_uint(db::hash, 256)
+            .store_uint(hash, 256)
+            .store_uint(cur_lt(), 64)
+            .store_uint(now(), 64)
+        .end_cell()
+        .begin_parse()
+    );
+}
+```
+
+使用哈希可以生成隨機數，但在使用 `rand()` 函數生成隨機數之前，我們使用 [randomize](https://docs.ton.org/develop/func/stdlib/#randomize) 隨機化哈希：
+
+```func
 () game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
     throw_unless(exit::invalid_bet(), msg_value == 1ton());
     int new_hash = slice_hash(
@@ -720,73 +380,74 @@ I write similar tutorials and analyzes on the TON network in my channel - https:
     );
 
     randomize(new_hash);
-	
+
 }
+```
 
-> Отмечу что это одна из возможных вариации реализации рандома, про рандом можно прочитать в документации - https://docs.ton.org/develop/smart-contracts/guidelines/random-number-generation
+> 我注意到這是實現隨機數的可能變體之一，您可以在文檔中閱讀隨機數 - https://docs.ton.org/develop/smart-contracts/guidelines/random-number-generation
 
-Для реализации вероятности выйгрыша генерируется число от 0 до 10000, здесь все просто, смотрим в какой перцентиль попало число и в зависимости от этого отправляем или не отпраaвляем выйгрышь:
+為了實現中獎概率，生成一個0到10000之間的數字，這裡很簡單，我們看數字落在哪個百分位，根據此決定是否發送獎金：
 
-	() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
-		throw_unless(exit::invalid_bet(), msg_value == 1ton());
-		int new_hash = slice_hash(
-			begin_cell()
-				.store_uint(db::hash, 256)
-				.store_uint(hash, 256)
-				.store_uint(cur_lt(), 64)
-				.store_uint(now(), 64)
-			.end_cell()
-			.begin_parse()
-		);
+```func
+() game::start(slice sender_addr, int msg_value, int hash) impure inline_ref {
+    throw_unless(exit::invalid_bet(), msg_value == 1ton());
+    int new_hash = slice_hash(
+        begin_cell()
+            .store_uint(db::hash, 256)
+            .store_uint(hash, 256)
+            .store_uint(cur_lt(), 64)
+            .store_uint(now(), 64)
+        .end_cell()
+        .begin_parse()
+    );
 
-		randomize(new_hash);
-		db::hash = new_hash;
+    randomize(new_hash);
+    db::hash = new_hash;
 
-		int number = rand(10000); ;; [0; 10000)
-		db::last_number = number;
-		db::available_balance += 1ton();
+    int number = rand(10000); ;; [0; 10000)
+    db::last_number = number;
+    db::available_balance += 1ton();
 
-		if (number < 10) { ;; win 1/2 available balance
-			int win = db::available_balance / 2;
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
+    if (number < 10) { ;; win 1/2 available balance
+        int win = db::available_balance / 2;
+        int commission = muldiv(win, 10, 100);
+        win -= commission;
 
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
+        db::available_balance -= (win + commission);
+        db::service_balance += commission;
 
-			game::payout(sender_addr, win, msg::jackpot());
+        game::payout(sender_addr, win, msg::jackpot());
 
-			return ();
-		}
+        return ();
+    }
 
-		if (number < 1000) { ;; win x5
-			int win = 5 * 1ton();
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
+    if (number < 1000) { ;; win x5
+        int win = 5 * 1ton();
+        int commission = muldiv(win, 10, 100);
+        win -= commission;
 
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
-			game::payout(sender_addr, win, msg::x5());
+        db::available_balance -= (win + commission);
+        db::service_balance += commission;
+        game::payout(sender_addr, win, msg::x5());
 
-			return ();
-		}
+        return ();
+    }
 
-		if (number < 2000) { ;; win x2
-			int win = 2 * 1ton();
-			int commission = muldiv(win, 10, 100);
-			win -= commission;
+    if (number < 2000) { ;; win x2
+        int win = 2 * 1ton();
+        int commission = muldiv(win, 10, 100);
+        win -= commission;
 
-			db::available_balance -= (win + commission);
-			db::service_balance += commission;
-			game::payout(sender_addr, win, msg::x2());
+        db::available_balance -= (win + commission);
+        db::service_balance += commission;
+        game::payout(sender_addr, win, msg::x2());
 
-			return ();
-		}
+        return ();
+    }
 
-	}
+}
+```
 
-## Заключение 
+## 結論
 
-Подобные туториалы и разборы по сети TON я пишу в свой канал - https://t.me/ton_learn . Буду рад вашей подписке.
-
-
+我會在我的頻道 https://t.me/ton_learn 上寫類似的TON網絡教學和分析。期待您的訂閱。

@@ -1,519 +1,523 @@
-## Introduction
-## What is an ICO
-ICO - Initial Coin Offering (initial placement of tokens) - issuance by any project or company of its own money - tokens (cryptocurrency) in order to attract investments.
+## 簡介
 
-### Why ICO is needed
-Conducting an ICO by a project allows you to provide it with funding, which is necessary for development, development and scaling. Usually, when conducting an ICO, it is assumed that the tokens will cost more over time. I note that "decent" projects, in their roadmaps, lay down various mechanics that do not allow the price of the token to fall sharply, provoking an even sharper price drop further.
+## 什麼是 ICO
 
-If you are curious to understand how profitable ICOs are, then you can see the statistics on the ROI of ICO projects [here](https://icodrops.com/ico-stats/).
+ICO，即初始代幣發行（Initial Coin Offering），是指任何項目或公司發行其自有代幣（加密貨幣），以籌集投資的行為。
 
-> Filter by USD ROI to see top projects.
+### 為什麼需要 ICO
 
-### Important: Risks
+通過 ICO，項目可以獲得所需的資金，以進行開發、擴展和增長。通常，在進行 ICO 時，預期這些代幣的價值會隨時間上升。「優質」項目通常會在其路線圖中設計各種機制，防止代幣價格急劇下跌，進而避免更大的價格波動。
 
-Speaking about ICO, one cannot ignore the risks, in fact, when buying tokens, you buy records in the blockchain, the value of which is provided only by the token issuer project. On the technical side, a smart contract with which an ICO is carried out can be hacked or initially have a backdoor that will allow the owner of the smart contract to change the terms of the ICO, and of course, any project can scam, even if there was no initial goal of creating a scam.
+如果你對 ICO 的盈利情況感興趣，可以查看 [這裡](https://icodrops.com/ico-stats/) 的 ICO 項目 ROI 統計數據。
 
-## Overview of smart contracts
+> 你可以通過 USD ROI 來篩選頂尖項目。
 
-In this tutorial, we will use the smart contract from the examples provided in the Jetton standard, namely the master contract `jetton-minter-ICO.fc` [from here](https://github.com/ton-blockchain/token-contract/tree/main/ft).
+### 重要提示：風險
 
-The essential difference between the master contract from the ninth lesson, which we analyzed in detail, is the presence of mechanics in this ICO smart contract, due to the following code in `recv_internal()`:
+談到 ICO，不能忽視風險。購買代幣時，實際上是購買區塊鏈中的記錄，其價值完全由代幣發行項目提供。從技術角度來看，進行 ICO 的智能合約可能會被黑客攻擊，或初始設計中就存在後門，使智能合約所有者可以改變 ICO 的條款。此外，任何項目都有可能變成詐騙，即使其初衷並非如此。
 
-	if (in_msg_body.slice_empty?()) { ;; buy jettons for Toncoin
+## 智能合約概述
 
-		  int amount = 10000000; ;; for mint message
-		  int buy_amount = msg_value - amount;
-		  throw_unless(76, buy_amount > 0);
+在本教程中，我們將使用 Jetton 標準示例中的智能合約，即 `jetton-minter-ICO.fc` 主合約 [代碼在這裡](https://github.com/ton-blockchain/token-contract/tree/main/ft)。
 
-		  int jetton_amount = buy_amount; ;; rate 1 jetton = 1 toncoin; multiply to price here
+與我們在第九課中詳細分析的主合約相比，這個 ICO 智能合約的主要區別在於 `recv_internal()` 中包含的機制：
 
-		  var master_msg = begin_cell()
-				.store_uint(op::internal_transfer(), 32)
-				.store_uint(0, 64) ;; quert_id
-				.store_coins(jetton_amount)
-				.store_slice(my_address()) ;; from_address
-				.store_slice(sender_address) ;; response_address
-				.store_coins(0) ;; no forward_amount
-				.store_uint(0, 1) ;; forward_payload in this slice, not separate cell
-				.end_cell();
+```func
+if (in_msg_body.slice_empty?()) { ;; 用 Toncoin 購買 jettons
 
-		  mint_tokens(sender_address, jetton_wallet_code, amount, master_msg);
-		  save_data(total_supply + jetton_amount, admin_address, content, jetton_wallet_code);
-		  return ();
-		}
+    int amount = 10000000; ;; mint 消息的數量
+    int buy_amount = msg_value - amount;
+    throw_unless(76, buy_amount > 0);
 
+    int jetton_amount = buy_amount; ;; 1 jetton = 1 toncoin; 這裡可乘以價格
 
-As you can see, the exchange of Toncoin for tokens occurs when sending a message with an empty body. Accordingly, in this lesson we will do the following:
-- we will make two wallets: from one we will launch the master contract, from the second we will send a message with an empty body to receive tokens
-- deploy `jetton-minter-ICO.fc`
-- send a message from the second wallet with an empty body and some amount of Toncoin to be exchanged for tokens
-- check that the balance of tokens has changed
+    var master_msg = begin_cell()
+        .store_uint(op::internal_transfer(), 32)
+        .store_uint(0, 64) ;; quert_id
+        .store_coins(jetton_amount)
+        .store_slice(my_address()) ;; from_address
+        .store_slice(sender_address) ;; response_address
+        .store_coins(0) ;; no forward_amount
+        .store_uint(0, 1) ;; forward_payload in this slice, not separate cell
+        .end_cell();
 
+    mint_tokens(sender_address, jetton_wallet_code, amount, master_msg);
+    save_data(total_supply + jetton_amount, admin_address, content, jetton_wallet_code);
+    return ();
+}
+```
 
-## Deploy contracts for ICO to testnet
+如你所見，Toncoin 兌換代幣的操作是通過發送空消息體的消息來實現的。因此，在本課中我們將完成以下步驟：
+- 創建兩個錢包：一個用於部署主合約，另一個用於發送空消息以獲得代幣
+- 部署 `jetton-minter-ICO.fc`
+- 從第二個錢包發送空消息體及一些 Toncoin 以兌換代幣
+- 驗證代幣餘額變化
 
-> If you have gone through the previous lessons and remember them well, scroll through immediately to Deploy contracts
+## 部署 ICO 智能合約到測試網
 
-### Wallets
+> 如果你已經完成了前面的課程並記得內容，可以直接跳到部署合約部分
 
-The first thing to do is to create two wallets in TON w1 and w2, one of them will be the "administrator address" of the smart contract, the second one we will use to exchange test TONs for Jetton in the test network. (lesson about it [here](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/14lesson/wallet_eng.md))
+### 錢包
 
-`SeedPhrase.go` code: 
+首先，需要在 TON 中創建兩個錢包 w1 和 w2，其中一個將用作智能合約的「管理員地址」，另一個將用於在測試網中用測試 TON 兌換 Jetton。（有關如何創建錢包的教程在 [這裡](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/14lesson/wallet_eng.md)）
 
-	package main
+`SeedPhrase.go` 代碼：
 
-	import (
-		"context"
-		"log"
-		"fmt"
+```go
+package main
 
-		"github.com/xssnick/tonutils-go/liteclient"
-		"github.com/xssnick/tonutils-go/ton"
-		"github.com/xssnick/tonutils-go/ton/wallet"
-	)
+import (
+	"context"
+	"log"
+	"fmt"
 
-	func main() {
+	"github.com/xssnick/tonutils-go/liteclient"
+	"github.com/xssnick/tonutils-go/ton"
+	"github.com/xssnick/tonutils-go/ton/wallet"
+)
 
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
 
-		client := liteclient.NewConnectionPool()
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
+	}
+	api := ton.NewAPIClient(client)
 
-		configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
+	seed1 := wallet.NewSeed()
+	fmt.Println("Seed phrase one:")
+	fmt.Println(seed1)
 
+	w1, err := wallet.FromSeed(api, seed1, wallet.V3)
+	if err != nil {
+		log.Fatalln("FromSeed err:", err.Error())
+		return
+	}
+	fmt.Println("Address one:")
+	fmt.Println(w1.Address())
 
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-		api := ton.NewAPIClient(client)
+	seed2 := wallet.NewSeed()
+	fmt.Println("Seed phrase two:")
+	fmt.Println(seed2)
 
-		seed1 := wallet.NewSeed()
-		fmt.Println("Seed phrase one:")
-		fmt.Println(seed1)
+	w2, err := wallet.FromSeed(api, seed2, wallet.V3)
+	if err != nil {
+		log.Fatalln("FromSeed err:", err.Error())
+		return
+	}
+	fmt.Println("Address two:")
+	fmt.Println(w2.Address())
 
-		w1, err := wallet.FromSeed(api, seed1, wallet.V3)
-		if err != nil {
-			log.Fatalln("FromSeed err:", err.Error())
-			return
-		}
-		fmt.Println("Address one:")
-		fmt.Println(w1.Address())
-
-		seed2 := wallet.NewSeed()
-		fmt.Println("Seed phrase two:")
-		fmt.Println(seed2)
-
-		w2, err := wallet.FromSeed(api, seed2, wallet.V3)
-		if err != nil {
-			log.Fatalln("FromSeed err:", err.Error())
-			return
-		}
-		fmt.Println("Address two:")
-		fmt.Println(w2.Address())
-
-		block, err := api.CurrentMasterchainInfo(context.Background())
-		if err != nil {
-			log.Fatalln("CurrentMasterchainInfo err:", err.Error())
-			return
-		}
-
-		balance1, err := w1.GetBalance(context.Background(), block)
-		if err != nil {
-			log.Fatalln("GetBalance err:", err.Error())
-			return
-		}
-		fmt.Println("Balance one:")
-		fmt.Println(balance1)
-
-		balance2, err := w2.GetBalance(context.Background(), block)
-		if err != nil {
-			log.Fatalln("GetBalance err:", err.Error())
-			return
-		}
-		fmt.Println("Balance two:")
-		fmt.Println(balance2)
-
+	block, err := api.CurrentMasterchainInfo(context.Background())
+	if err != nil {
+		log.Fatalln("CurrentMasterchainInfo err:", err.Error())
+		return
 	}
 
-We save seed phrases somewhere, with the help of them we will use the wallet in other scripts, and also send test tones to both addresses using the bot: https://t.me/testgiver_ton_bot
+	balance1, err := w1.GetBalance(context.Background(), block)
+	if err != nil {
+		log.Fatalln("GetBalance err:", err.Error())
+		return
+	}
+	fmt.Println("Balance one:")
+	fmt.Println(balance1)
 
-A minute later, check that the funds came through: https://testnet.tonscan.org/
+	balance2, err := w2.GetBalance(context.Background(), block)
+	if err != nil {
+		log.Fatalln("GetBalance err:", err.Error())
+		return
+	}
+	fmt.Println("Balance two:")
+	fmt.Println(balance2)
+}
+```
 
-> Since wallet two will have to wait a while to replenish the second wallet.
+將種子短語保存到某個地方，並通過測試網上的機器人向兩個地址發送測試 Toncoin：https://t.me/testgiver_ton_bot
 
-We will use wallets with the help of the functions we wrote, as in previous lessons. Let's use them to, for example, find out the balance.
+稍後檢查資金是否到達：https://testnet.tonscan.org/
 
-`WalletFunC.go` code: 
+> 由於第二個錢包需要一些時間來補充資金，因此需要稍作等待。
 
-	package main
+我們將使用我們編寫的函數來管理錢包，類似於之前的課程。我們將使用這些函數來查詢餘額。
 
-	import (
-		"context"
-		"log"
-		"fmt"
-		"strings"
+`WalletFunC.go` 代碼：
 
-		"github.com/xssnick/tonutils-go/liteclient"
-		"github.com/xssnick/tonutils-go/ton"
-		"github.com/xssnick/tonutils-go/ton/wallet"
-	)
+```go
+package main
 
-	func main() {
+import (
+	"context"
+	"log"
+	"fmt"
+	"strings"
 
+	"github.com/xssnick/tonutils-go/liteclient"
+	"github.com/xssnick/tonutils-go/ton"
+	"github.com/xssnick/tonutils-go/ton/wallet"
+)
 
-		client := liteclient.NewConnectionPool()
+func main() {
+	client := liteclient.NewConnectionPool()
+	configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
 
-		configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
+	err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+	if err != nil {
+		panic(err)
+	}
+	api := ton.NewAPIClient(client)
 
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-		api := ton.NewAPIClient(client)
+	w1 := getWallet1(api)
+	w2 := getWallet2(api)
 
-		w1 := getWallet1(api)
-		w2 := getWallet2(api)
+	fmt.Println(w1.Address())
+	fmt.Println(w2.Address())
 
-
-		fmt.Println(w1.Address())
-		fmt.Println(w1.Address())
-		block, err := api.CurrentMasterchainInfo(context.Background())
-		if err != nil {
-			log.Fatalln("CurrentMasterchainInfo err:", err.Error())
-			return
-		}
-
-
-		balance1, err := w1.GetBalance(context.Background(), block)
-		if err != nil {
-			log.Fatalln("GetBalance1 err:", err.Error())
-			return
-		}
-
-		fmt.Println(balance1)
-
-		balance2, err := w2.GetBalance(context.Background(), block)
-		if err != nil {
-			log.Fatalln("GetBalance2 err:", err.Error())
-			return
-		}
-
-		fmt.Println(balance2)
-
+	block, err := api.CurrentMasterchainInfo(context.Background())
+	if err != nil {
+		log.Fatalln("CurrentMasterchainInfo err:", err.Error())
+		return
 	}
 
-
-
-	func getWallet1(api *ton.APIClient) *wallet.Wallet {
-		words := strings.Split("your Seed phrase 1", " ")
-		w, err := wallet.FromSeed(api, words, wallet.V3)
-		if err != nil {
-			panic(err)
-		}
-		return w
+	balance1, err := w1.GetBalance(context.Background(), block)
+	if err != nil {
+		log.Fatalln("GetBalance1 err:", err.Error())
+		return
 	}
 
-	func getWallet2(api *ton.APIClient) *wallet.Wallet {
-		words := strings.Split("your Seed phrase 2", " ")
-		w, err := wallet.FromSeed(api, words, wallet.V3)
-		if err != nil {
-			panic(err)
-		}
-		return w
+	fmt.Println(balance1)
+
+	balance2, err := w2.GetBalance(context.Background(), block)
+	if err != nil {
+		log.Fatalln("GetBalance2 err:", err.Error())
+		return
 	}
 
-> Yes, you can make one function and pass parameters there, but this is done for ease of perception of the code
+	fmt.Println(balance2)
+}
 
-### Deploy contracts
+func getWallet1(api *ton.APIClient) *wallet.Wallet {
+	words := strings.Split("你的種子短語 1", " ")
+	w, err := wallet.FromSeed(api, words, wallet.V3)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
 
-#### Create a hexBoc representation of contracts
+func getWallet2(api *ton.APIClient) *wallet.Wallet {
+	words := strings.Split("你的種子短語 2", " ")
+	w, err := wallet.FromSeed(api, words, wallet.V3)
+	if err != nil {
+		panic(err)
+	}
+	return w
+}
+```
 
-In the `tonutils-go` library, you can deploy a smart contract in the form of hexBoc. Boc is a serialized form of a smart contract (bag-of-cells). To convert a smart contract into a hexBoc form from func, you must first compile it into fift, and then get hexBoc with a separate fift script. This can be done using the familiar `toncli`. But first things first.
+> 當然，你可以寫一個函數並傳遞參數，但這樣做是為了便於理解代碼。
 
-##### Building jetton-minter-ICO and jetton-wallet code
+### 部署合約
 
-We will take the func code from [examples](https://github.com/ton-blockchain/token-contract/tree/main/ft), we need `jetton-minter-ICO.fc` and `jetton-minter.fc `, as well as auxiliary ones:
+#### 創建合約的 hexBoc 表示
+
+在 `tonutils-go` 庫中，可以將智能合約以 hexBoc 形式部署。Boc 是智能合約的序列化形式（bag-of-cells）。要將智能合約從 func 轉換為 hexBoc 形式，首先需要將其編譯為 fift，然後使用一個獨立的 fift 腳本來獲取 hexBoc。這可以使用熟悉的 `toncli` 來完成。具體步驟如下。
+
+##### 構建 jetton-minter-ICO 和 jetton-wallet 代碼
+
+我們將從[示例](https://github.com/ton-blockchain/token-contract/tree/main/ft)中獲取 func 代碼，我們需要 `jetton-minter-ICO.fc` 和 `jetton-minter.fc`，以及一些輔助代碼：
 - `jetton-utils.fc`
 - `op-codes.fc`
 - `params.fc`
 
-> For your convenience, I have compiled two amalgam codes (all in one file), see code files: `code-amalgama.func` and `codewallet-amalgama.func`
+> 為方便起見，我已將兩個合併代碼（所有文件）放在一起，見 `code-amalgama.func` 和 `codewallet-amalgama.func`。
 
-##### Get fift
+##### 獲取 fift
 
-Turn func code into fift using `toncli func build`
+使用 `toncli func build` 將 func 代碼轉換為 fift。
 
-> In code, the resulting files are `contract` and `contractwallet`
+> 在代碼中，生成的文件是 `contract` 和 `contractwallet`。
 
-##### Let's print hexBoc
+##### 打印 hexBoc
 
-Now the script that will translate the code into hexBOC format:
+現在使用一個腳本將代碼轉換為 hexBOC 格式：
 
-	#!/usr/bin/fift -s
-	"TonUtil.fif" include
-	"Asm.fif" include
+```fift
+#!/usr/bin/fift -s
+"TonUtil.fif" include
+"Asm.fif" include
 
-	."first contract:" cr
+."first contract:" cr
 
-	"first.fif" include
-	2 boc+>B dup Bx. cr cr
+"first.fif" include
+2 boc+>B dup Bx. cr cr
+```
 
-I will not dwell on fift in detail, this is beyond the scope of this lesson, I will only note:
-- boc+>B - serializes to boc format
-- cr - displays the value in a string
+我不會詳細介紹 fift，這超出了本課範圍，我只想指出：
+- boc+>B - 序列化為 boc 格式
+- cr - 在字符串中顯示值
 
-> You can run the script either using the familiar toncli, namely `toncli fift run` , or as described [here](https://ton-blockchain.github.io/docs/#/compile?id=fift).
+> 你可以使用熟悉的 `toncli` 運行腳本，即 `toncli fift run`，或按[此處](https://ton-blockchain.github.io/docs/#/compile?id=fift)描述的方法運行。
 
-An example script is in the `print-hex.fif` file.
+示例腳本在 `print-hex.fif` 文件中。
 
-Outcome:
- - `jetton-minter-ICO.fc` hexBoc:  B5EE9C7241020B010001F5000114FF00F4A413F4BCF2C80B0102016202030202CD040502037A60090A03F7D00E8698180B8D8492F81F07D201876A2687D007D206A6A1812E38047221AC1044C4B4028B350906100797026381041080BC6A28CE4658FE59F917D017C14678B13678B10FD0165806493081B2044780382502189E428027D012C678B666664F6AA701B02698FE99FC00AA9185D718141083DEECBEF09DD71812F83C0607080093F7C142201B82A1009AA0A01E428027D012C678B00E78B666491646580897A007A00658064907C80383A6465816503E5FFE4E83BC00C646582AC678B28027D0109E5B589666664B8FD80400606C215131C705F2E04902FA40FA00D43020D08060D721FA00302710345042F007A05023C85004FA0258CF16CCCCC9ED5400FC01FA00FA40F82854120970542013541403C85004FA0258CF1601CF16CCC922C8CB0112F400F400CB00C9F9007074C8CB02CA07CBFFC9D05006C705F2E04A13A1034145C85004FA0258CF16CCCCC9ED5401FA403020D70B01C3008E1F8210D53276DB708010C8CB055003CF1622FA0212CB6ACB1FCB3FC98042FB00915BE20008840FF2F0007DADBCF6A2687D007D206A6A183618FC1400B82A1009AA0A01E428027D012C678B00E78B666491646580897A007A00658064FC80383A6465816503E5FFE4E840001FAF16F6A2687D007D206A6A183FAA9040CA85A166 
- - `jetton-minter.fc` hexBoc:  B5EE9C7241021201000330000114FF00F4A413F4BCF2C80B0102016202030202CC0405001BA0F605DA89A1F401F481F481A8610201D40607020148080900BB0831C02497C138007434C0C05C6C2544D7C0FC02F83E903E900C7E800C5C75C87E800C7E800C00B4C7E08403E29FA954882EA54C4D167C0238208405E3514654882EA58C511100FC02780D60841657C1EF2EA4D67C02B817C12103FCBC2000113E910C1C2EBCB853600201200A0B020120101101F100F4CFFE803E90087C007B51343E803E903E90350C144DA8548AB1C17CB8B04A30BFFCB8B0950D109C150804D50500F214013E809633C58073C5B33248B232C044BD003D0032C032483E401C1D3232C0B281F2FFF274013E903D010C7E800835D270803CB8B11DE0063232C1540233C59C3E8085F2DAC4F3200C03F73B51343E803E903E90350C0234CFFE80145468017E903E9014D6F1C1551CDB5C150804D50500F214013E809633C58073C5B33248B232C044BD003D0032C0327E401C1D3232C0B281F2FFF274140371C1472C7CB8B0C2BE80146A2860822625A020822625A004AD822860822625A028062849F8C3C975C2C070C008E00D0E0F00AE8210178D4519C8CB1F19CB3F5007FA0222CF165006CF1625FA025003CF16C95005CC2391729171E25008A813A08208989680AA008208989680A0A014BCF2E2C504C98040FB001023C85004FA0258CF1601CF16CCC9ED5400705279A018A182107362D09CC8CB1F5230CB3F58FA025007CF165007CF16C9718010C8CB0524CF165006FA0215CB6A14CCC971FB0010241023000E10491038375F040076C200B08E218210D53276DB708010C8CB055008CF165004FA0216CB6A12CB1F12CB3FC972FB0093356C21E203C85004FA0258CF1601CF16CCC9ED5400DB3B51343E803E903E90350C01F4CFFE803E900C145468549271C17CB8B049F0BFFCB8B0A0822625A02A8005A805AF3CB8B0E0841EF765F7B232C7C572CFD400FE8088B3C58073C5B25C60063232C14933C59C3E80B2DAB33260103EC01004F214013E809633C58073C5B3327B55200083200835C87B51343E803E903E90350C0134C7E08405E3514654882EA0841EF765F784EE84AC7CB8B174CFCC7E800C04E81408F214013E809633C58073C5B3327B55209FB23AB6
- 
-#### Prepare data for Jetton
- 
-For deployment, in addition to hexBoc, we need data for the jetton-minter-ICO storage contract. Let's see what data is needed according to the standard:
+結果：
+- `jetton-minter-ICO.fc` 的 hexBoc: B5EE9C7241020B010001F5000114FF00F4A413F4BCF2C80B0102016202030202CD040502037A60090A03F7D00E8698180B8D8492F81F07D201876A2687D007D206A6A1812E38047221AC1044C4B4028B350906100797026381041080BC6A28CE4658FE59F917D017C14678B13678B10FD0165806493081B2044780382502189E428027D012C678B666664F6AA701B02698FE99FC00AA9185D718141083DEECBEF09DD71812F83C0607080093F7C142201B82A1009AA0A01E428027D012C678B00E78B666491646580897A007A00658064907C80383A6465816503E5FFE4E83BC00C646582AC678B28027D0109E5B589666664B8FD80400606C215131C705F2E04902FA40FA00D43020D08060D721FA00302710345042F007A05023C85004FA0258CF16CCCCC9ED5400FC01FA00FA40F82854120970542013541403C85004FA0258CF1601CF16CCC922C8CB0112F400F400CB00C9F9007074C8CB02CA07CBFFC9D05006C705F2E04A13A1034145C85004FA0258CF16CCCCC9ED5401FA403020D70B01C3008E1F8210D53276DB708010C8CB055003CF1622FA0212CB6ACB1FCB3FC98042FB00915BE20008840FF2F0007DADBCF6A2687D007D206A6A183618FC1400B82A1009AA0A01E428027D012C678B00E78B666491646580897A007A00658064FC80383A6465816503E5FFE4E840001FAF16F6A2687D007D206A6A183FAA9040CA85A166 
+- `jetton-minter.fc` 的 hexBoc: B5EE9C7241021201000330000114FF00F4A413F4BCF2C80B0102016202030202CC0405001BA0F605DA89A1F401F481F481A8610201D40607020148080900BB0831C02497C138007434C0C05C6C2544D7C0FC02F83E903E900C7E800C5C75C87E800C7E800C00B4C7E08403E29FA954882EA54C4D167C0238208405E3514654882EA58C511100FC02780D60841657C1EF2EA4D67C02B817C12103FCBC2000113E910C1C2EBCB853600201200A0B020120101101F100F4CFFE803E90087C007B51343E803E903E90350C144DA8548AB1C17CB8B04A30BFFCB8B0950D109C150804D50500F214013E809633C58073C5B33248B232C044BD003D0032C032483E401C1D3232C0B281F2FFF274013E903D010C7E800835D270803CB8B11DE0063232C1540233C59C3E8085F2DAC4F3200C03F73B51343E803E903E90350C0234CFFE80145468017E903E9014D6F1C1551CDB5C150804D50500F214013E809633C58073C5B33248B232C044BD003D0032C0327E401C1D3232C0B281F2FFF274140371C1472C7CB8B0C2BE80146A2860822625A020822625A004AD822860822625A028062849F8C3C975C2C070C008E00D0E0F00AE8210178D4519C8CB1F19CB3F5007FA0222CF165006CF1625FA025003CF16C95005CC2391729171E25008A813A08208989680AA008208989680A0A014BCF2E2C504C98040FB001023C85004FA0258CF1601CF16CCC9ED5400705279A018A182107362D09CC8CB1F5230CB3F58FA025007CF165007CF16C9718010C8CB0524CF165006FA0215CB6A14CCC971FB0010241023000E10491038375F040076C200B08E218210D53276DB708010C8CB055008CF165004FA0216CB6A12CB1F12CB3FC972FB0093356C21E203C85004FA0258CF1601CF16CCC9ED5400DB3B51343E803E903E90350C01F4CFFE803E900C145468549271C17CB8B049F0BFFCB8B0A0822625A02A8005A805AF3CB8B0E0841EF765F7B232C7C572CFD400FE8088B3C58073C5B25C60063232C14933C59C3E80B2DAB33260103EC01004F214013E809633C58073C5B3327B55200083200835C87B51343E803E903E90350C0134C7E08405E3514654882EA0841EF765F784EE84AC7CB8B174CFCC7E800C04E81408F214013E809633C58073C5B3327B55209FB23AB6
 
-	;; storage scheme
-	;; storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
-	
+#### 為 Jetton 準備數據
 
-For convenience, let's look at the function that saves data to the `c4` register:
+除了 hexBoc，我們還需要 jetton-minter-ICO 存儲合約的數據。讓我們來看看標準中需要的數據：
 
-	 () save_data(int total_supply, slice admin_address, cell content, cell jetton_wallet_code) impure inline {
-	  set_data(begin_cell()
-				.store_coins(total_supply)
-				.store_slice(admin_address)
-				.store_ref(content)
-				.store_ref(jetton_wallet_code)
-			   .end_cell()
-			  );
-	}
+```func
+;; storage scheme
+;; storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
+```
 
-Content according to the standard can be viewed [here](https://github.com/ton-blockchain/TIPs/issues/64). Since this is a test example, we will not collect all the data, we will only put a link and then to the lessons))
- 
-	 func getContractData(OwnerAddr *address.Address) *cell.Cell {
-		// storage scheme
-		// storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
+為方便起見，我們來看看將數據保存到 `c4` 寄存器的函數：
 
-		uri := "https://github.com/romanovichim/TonFunClessons_ru"
-		jettonContentCell := cell.BeginCell().MustStoreStringSnake(uri).EndCell()
+```func
+() save_data(int total_supply, slice admin_address, cell content, cell jetton_wallet_code) impure inline {
+    set_data(begin_cell()
+        .store_coins(total_supply)
+        .store_slice(admin_address)
+        .store_ref(content)
+        .store_ref(jetton_wallet_code)
+        .end_cell()
+    );
+}
+```
 
-		contentRef := cell.BeginCell().
-			MustStoreRef(jettonContentCell).
-			EndCell()
+內容可以參考標準中的描述[這裡](https://github.com/ton-blockchain/TIPs/issues/64)。由於這是一個測試範例，我們不會收集所有數據，只會放置一個鏈接，以便在課程中使用。
 
-		return data
-	}
- 
-After preparing the link, we will collect the data cell by putting there:
-  - total token supply MustStoreUInt(10000000, 64)
-  - admin wallet address MustStoreAddr(OwnerAddr)
-  - jettonContentCell content cell
-  - contract wallet code MustStoreRef(getJettonWalletCode())
- 
-	func getContractData(OwnerAddr *address.Address) *cell.Cell {
-		// storage scheme
-		// storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
+```go
+func getContractData(OwnerAddr *address.Address) *cell.Cell {
+    // storage scheme
+    // storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
 
-		uri := "https://github.com/romanovichim/TonFunClessons_ru"
-		jettonContentCell := cell.BeginCell().MustStoreStringSnake(uri).EndCell()
+    uri := "https://github.com/romanovichim/TonFunClessons_ru"
+    jettonContentCell := cell.BeginCell().MustStoreStringSnake(uri).EndCell()
 
-		contentRef := cell.BeginCell().
-			MustStoreRef(jettonContentCell).
-			EndCell()
+    contentRef := cell.BeginCell().
+        MustStoreRef(jettonContentCell).
+        EndCell()
 
-		data := cell.BeginCell().MustStoreUInt(10000000, 64).
-			MustStoreAddr(OwnerAddr).
-			MustStoreRef(contentRef).
-			MustStoreRef(getJettonWalletCode()).
-			EndCell()
+    return data
+}
+```
 
-		return data
-	}
+在準備好鏈接後，我們將組合數據 cell，並將以下內容放入：
+- 總代幣供應量 MustStoreUInt(10000000, 64)
+- 管理員錢包地址 MustStoreAddr(OwnerAddr)
+- jettonContentCell 內容 cell
+- 合約錢包代碼 MustStoreRef(getJettonWalletCode())
 
-#### Deploy
+```go
+func getContractData(OwnerAddr *address.Address) *cell.Cell {
+    // storage scheme
+    // storage#_ total_supply:Coins admin_address:MsgAddress content:^Cell jetton_wallet_code:^Cell = Storage;
 
-  In general, the deployment script is identical to the script from the lesson where we deployed the NFT collection. We have a `getContractData` function with data, two functions from the hexboc contract and wallet master and main from which we deploy the ICO contract:
- 
-	 func main() {
+    uri := "https://github.com/romanovichim/TonFunClessons_ru"
+    jettonContentCell := cell.BeginCell().MustStoreStringSnake(uri).EndCell()
 
-		// connect to mainnet lite server
-		client := liteclient.NewConnectionPool()
+    contentRef := cell.BeginCell().
+        MustStoreRef(jettonContentCell).
+        EndCell()
 
-		configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
+    data := cell.BeginCell().MustStoreUInt(10000000, 64).
+        MustStoreAddr(OwnerAddr).
+        MustStoreRef(contentRef).
+        MustStoreRef(getJettonWalletCode()).
+        EndCell()
 
-		err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
-		if err != nil {
-			panic(err)
-		}
-		api := ton.NewAPIClient(client)
-		w := getWallet(api)
+    return data
+}
+```
 
-		msgBody := cell.BeginCell().EndCell()
+#### 部署
 
-		fmt.Println("Deploying Jetton ICO	contract to mainnet...")
-		addr, err := w.DeployContract(context.Background(), tlb.MustFromTON("0.02"),
-			msgBody, getJettonMasterCode(), getContractData(w.Address()), true)
-		if err != nil {
-			panic(err)
-		}
+總體來說，部署腳本與我們部署 NFT 集合的課程中的腳本相似。我們有一個 `getContractData` 函數來準備數據，兩個從 hexboc 合約和錢包主合約中提取函數，然後從主函數中部署 ICO 合約：
 
-		fmt.Println("Deployed contract addr:", addr.String())
-	}
- 
-Sample script in `DeployJettonMinter.go` file.
- 
-### Call smart contracts
+```go
+func main() {
+    // 連接到主網 lite 服務器
+    client := liteclient.NewConnectionPool()
+    configUrl := "https://ton-blockchain.github.io/testnet-global.config.json"
 
-After deploying the smart contract, it remains to call it and exchange Toncoin for our token. To do this, you need to send a message with an empty body and some amount of Toncoin. Let's use the second wallet, which we prepared at the beginning of the lesson.
+    err := client.AddConnectionsFromConfigUrl(context.Background(), configUrl)
+    if err != nil {
+        panic(err)
+    }
+    api := ton.NewAPIClient(client)
+    w := getWallet(api)
 
- `ICO.go` code:
+    msgBody := cell.BeginCell().EndCell()
 
-	func main() {
-		client := liteclient.NewConnectionPool()
-		// connect to testnet lite server
-		err := client.AddConnectionsFromConfigUrl(context.Background(), "https://ton-blockchain.github.io/testnet-global.config.json")
-		if err != nil {
-			panic(err)
-		}
+    fmt.Println("部署 Jetton ICO 合約到主網...")
+    addr, err := w.DeployContract(context.Background(), tlb.MustFromTON("0.02"),
+        msgBody, getJettonMasterCode(), getContractData(w.Address()), true)
+    if err != nil {
+        panic(err)
+    }
 
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
+    fmt.Println("已部署合約地址:", addr.String())
+}
+```
 
-		// seed words of account, you can generate them with any wallet or using wallet.NewSeed() method
-		words := strings.Split("your seed phrase", " ")
+完整的腳本在 `DeployJettonMinter.go` 文件中。
 
-		w, err := wallet.FromSeed(api, words, wallet.V3)
-		if err != nil {
-			log.Fatalln("FromSeed err:", err.Error())
-			return
-		}
+### 調用智能合約
 
-		log.Println("wallet address:", w.Address())
+部署完智能合約後，剩下的就是調用它並用 Toncoin 兌換我們的代幣。為此，需要發送一個空消息體和一些 Toncoin。我們將使用在課程開始時準備的第二個錢包。
 
-		block, err := api.CurrentMasterchainInfo(context.Background())
-		if err != nil {
-			log.Fatalln("CurrentMasterchainInfo err:", err.Error())
-			return
-		}
+`ICO.go` 代碼：
 
-		balance, err := w.GetBalance(context.Background(), block)
-		if err != nil {
-			log.Fatalln("GetBalance err:", err.Error())
-			return
-		}
+```go
+func main() {
+    client := liteclient.NewConnectionPool()
+    // 連接到測試網 lite 服務器
+    err := client.AddConnectionsFromConfigUrl(context.Background(), "https://ton-blockchain.github.io/testnet-global.config.json")
+    if err != nil {
+        panic(err)
+    }
 
-		if balance.NanoTON().Uint64() >= 100000000 {
+    // 初始化 ton api lite 連接包裝器
+    api := ton.NewAPIClient(client)
 
-			// ICO address 
-			addr := address.MustParseAddr("EQD_yyEbNQeWbWfnOIowqNilB8wwbCg6nLxHDP3Rbey1eA72")
+    // 賬戶的種子短語，你可以使用任何錢包或 wallet.NewSeed() 方法生成它們
+    words := strings.Split("你的種子短語", " ")
 
-		fmt.Println("Let's send message")
-		err = w.Send(context.Background(), &wallet.Message{
-		 Mode: 3,
-		 InternalMessage: &tlb.InternalMessage{
-		  IHRDisabled: true,
-		  Bounce:      true,
-		  DstAddr:     addr,
-		  Amount:      tlb.MustFromTON("1"),
-		  Body:        cell.BeginCell().EndCell(),
-		 },
-		}, true)
-		if err != nil {
-		 fmt.Println(err)
-		}
+    w, err := wallet.FromSeed(api, words, wallet.V3)
+    if err != nil {
+        log.Fatalln("FromSeed err:", err.Error())
+        return
+    }
 
-			// update chain info
-			block, err = api.CurrentMasterchainInfo(context.Background())
-			if err != nil {
-				log.Fatalln("CurrentMasterchainInfo err:", err.Error())
-				return
-			}
+    log.Println("錢包地址:", w.Address())
 
-			balance, err = w.GetBalance(context.Background(), block)
-			if err != nil {
-				log.Fatalln("GetBalance err:", err.Error())
-				return
-			}
+    block, err := api.CurrentMasterchainInfo(context.Background())
+    if err != nil {
+        log.Fatalln("CurrentMasterchainInfo err:", err.Error())
+        return
+    }
 
-			log.Println("transaction sent, balance left:", balance.TON())
+    balance, err := w.GetBalance(context.Background(), block)
+    if err != nil {
+        log.Fatalln("GetBalance err:", err.Error())
+        return
+    }
 
-			return
-		}
+    if balance.NanoTON().Uint64() >= 100000000 {
+        // ICO 地址 
+        addr := address.MustParseAddr("EQD_yyEbNQeWbWfnOIowqNilB8wwbCg6nLxHDP3Rbey1eA72")
 
-		log.Println("not enough balance:", balance.TON())
-	}
-	
+        fmt.Println("發送消息")
+        err = w.Send(context.Background(), &wallet.Message{
+            Mode: 3,
+            InternalMessage: &tlb.InternalMessage{
+                IHRDisabled: true,
+                Bounce:      true,
+                DstAddr:     addr,
+                Amount:      tlb.MustFromTON("1"),
+                Body:        cell.BeginCell().EndCell(),
+            },
+        }, true)
+        if err != nil {
+            fmt.Println(err)
+        }
 
-If successful, in https://testnet.tonscan.org/ we can see the following picture:
+        // 更新鏈信息
+        block, err = api.CurrentMasterchainInfo(context.Background())
+        if err != nil {
+            log.Fatalln("CurrentMasterchainInfo err:", err.Error())
+            return
+        }
+
+        balance, err = w.GetBalance(context.Background(), block)
+        if err != nil {
+            log.Fatalln("GetBalance err:", err.Error())
+            return
+        }
+
+        log.Println("交易已發送，餘額剩餘:", balance.TON())
+        return
+    }
+
+    log.Println("餘額不足:", balance.TON())
+}
+```
+
+如果成功，我們可以在 https://testnet.tonscan.org/ 上看到如下圖所示的畫面：
 
 ![tnscn](./img/tnscn.PNG)
 
-Our message and return message notice.
+我們的消息和返回消息通知。
 
-### Examining the result
+### 檢查結果
 
-Let's take the balance of tokens from our wallet from which we sent Toncoin.
- 
-`JettonBalance.go` code:
+讓我們從我們發送 Toncoin 的錢包中獲取代幣餘額。
 
-	package main
+`JettonBalance.go` 代碼：
 
-	import (
-		"context"
-		"github.com/xssnick/tonutils-go/address"
-		_ "github.com/xssnick/tonutils-go/tlb"
-		"github.com/xssnick/tonutils-go/ton/jetton"
-		_ "github.com/xssnick/tonutils-go/ton/nft"
-		_ "github.com/xssnick/tonutils-go/ton/wallet"
-		"log"
-		_ "strings"
+```go
+package main
 
-		"github.com/xssnick/tonutils-go/liteclient"
-		"github.com/xssnick/tonutils-go/ton"
-	)
+import (
+    "context"
+    "github.com/xssnick/tonutils-go/address"
+    _ "github.com/xssnick/tonutils-go/tlb"
+    "github.com/xssnick/tonutils-go/ton/jetton"
+    _ "github.com/xssnick/tonutils-go/ton/nft"
+    _ "github.com/xssnick/tonutils-go/ton/wallet"
+    "log"
+    _ "strings"
 
-	func main() {
-		client := liteclient.NewConnectionPool()
+    "github.com/xssnick/tonutils-go/liteclient"
+    "github.com/xssnick/tonutils-go/ton"
+)
 
-		// connect to testnet lite server
-		err := client.AddConnectionsFromConfigUrl(context.Background(), "https://ton-blockchain.github.io/testnet-global.config.json")
-		if err != nil {
-			panic(err)
-		}
+func main() {
+    client := liteclient.NewConnectionPool()
+    // 連接到測試網 lite 服務器
+    err := client.AddConnectionsFromConfigUrl(context.Background(), "https://ton-blockchain.github.io/testnet-global.config.json")
+    if err != nil {
+        panic(err)
+    }
 
-		// initialize ton api lite connection wrapper
-		api := ton.NewAPIClient(client)
+    // 初始化 ton api lite 連接包裝器
+    api := ton.NewAPIClient(client)
 
-		// jetton contract address
-		contract := address.MustParseAddr("EQD_yyEbNQeWbWfnOIowqNilB8wwbCg6nLxHDP3Rbey1eA72")
-		master := jetton.NewJettonMasterClient(api, contract)
+    // jetton 合約地址
+    contract := address.MustParseAddr("EQD_yyEbNQeWbWfnOIowqNilB8wwbCg6nLxHDP3Rbey1eA72")
+    master := jetton.NewJettonMasterClient(api, contract)
 
-		// get jetton wallet for account
-		ownerAddr := address.MustParseAddr("EQAIz6DspthuIkUaBZaeH7THhe7LSOXmQImH2eT97KI2Dl4z")
-		tokenWallet, err := master.GetJettonWallet(context.Background(), ownerAddr)
-		if err != nil {
-			log.Fatal(err)
-		}
+    // 獲取賬戶的 jetton 錢包
+    ownerAddr := address.MustParseAddr("EQAIz6DspthuIkUaBZaeH7THhe7LSOXmQImH2eT97KI2Dl4z")
+    tokenWallet, err := master.GetJettonWallet(context.Background(), ownerAddr)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-		tokenBalance, err := tokenWallet.GetBalance(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
+    tokenBalance, err := tokenWallet.GetBalance(context.Background())
+    if err != nil {
+        log.Fatal(err)
+    }
 
-		log.Println("token balance:", tokenBalance.String())
-	}
+    log.Println("代幣餘額:", tokenBalance.String())
+}
+```
 
-If successful, we can see the following picture:
+如果成功，我們可以看到如下圖所示的畫面：
 
 ![cli](./img/wg.PNG)
 
-> There are fewer tokens than we sent Toncoin since there are fees, plus the contract needs to send a message back.
+> 由於有費用，再加上合約需要發送一條消息回來，因此獲得的代幣數量會少於我們發送的 Toncoin 數量。
 
-##  Exercise
+## 練習
 
-In the tonutils-go library, there are some convenient methods for transferring tokens from wallet to wallet, try using them to transfer tokens from wallet `w2` to `w1`.
+在 tonutils-go 庫中，有一些便捷的方法可以將代幣從一個錢包轉移到另一個錢包，嘗試使用它們將代幣從錢包 `w2` 轉移到 `w1`。
 
-## Conclusion
+## 總結
 
-Tokens offer many opportunities, but also carry comparable risks.
+代幣提供了許多機會，但也伴隨著相應的風險。
