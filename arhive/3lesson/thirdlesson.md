@@ -1,312 +1,343 @@
-# Lesson 3 Proxy smart contract
-## Introduction
+# 課程 3：代理智能合約
+## 介紹
 
-In this tutorial, we will write a proxy (sends all messages to its owner) smart contract in the test network The Open Network in the FunC language, deploy it to the test network using [toncli](https://github.com/disintar/toncli), and we will test it in the next lesson.
+在這個教學中，我們將在 The Open Network 測試網中使用 FunC 語言編寫一個代理（將所有消息轉發給其擁有者）智能合約，並使用 [toncli](https://github.com/disintar/toncli) 部署到測試網，並在下一課中進行測試。
 
-## Requirements
+## 必要條件
 
-To complete this tutorial, you need to install the [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) command line interface .
+完成此教學，您需要安裝 [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) 命令行界面。
 
-And also be able to create/deploy a project using toncli, you can learn how to do it in the [first lesson](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/1lesson/firstlesson.md).
+還需要能夠使用 toncli 創建/部署項目，您可以在[第一課](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/1lesson/firstlesson.md)中學習如何操作。
 
-## Smart contract
+## 智能合約
 
-The smart contract that we will create should have the following functionality**:
-- Forwarding all messages coming into the contract to the owner;
-- When forwarding, the sender's address must go first, and then the body of the message
-- The value of the Toncoin attached to the message must be equal to the value of the incoming message minus processing fees (computation and message forwarding fees)
-- The owner's address is stored in the smart contract storage
-- When sending a message to the contract from the owner, the forwarding should not be carried out
+我們將創建的智能合約應具備以下功能**：
+- 將進入合約的所有消息轉發給擁有者；
+- 在轉發時，發送者的地址應該首先出現，然後是消息正文；
+- 附加到消息中的 Toncoin 數量應等於傳入消息的數量減去處理費用（計算和消息轉發費用）；
+- 擁有者的地址存儲在智能合約的存儲中；
+- 當擁有者向合約發送消息時，不應進行轉發。
 
-** I decided to take ideas for smart contracts from the [FunC contest1](https://github.com/ton-blockchain/func-contest1) tasks, as they are very well suited for getting acquainted with the development of smart contracts for TON.
+** 我決定從 [FunC contest1](https://github.com/ton-blockchain/func-contest1) 任務中選取智能合約的點子，因為它們非常適合用來熟悉 TON 智能合約的開發。
 
-## External method
+## 外部方法
 
-In order for our proxy to receive messages, we will use the external method `recv_internal()`
+為了讓我們的代理接收消息，我們將使用外部方法 `recv_internal()`
 
-    () recv_internal() {
+```func
+() recv_internal() {
 
-    }
+}
+```
 
-##### External method arguments
-Here a logical question arises - how to understand what arguments a function should have so that it can receive messages on the TON network?
+### 外部方法參數
+這裡有一個邏輯問題 - 如何理解函數應該有什麼參數，以便它可以接收 TON 網絡上的消息？
 
-According to the documentation of the [TON virtual machine - TVM](https://ton-blockchain.github.io/docs/tvm.pdf), when an event occurs on an account in one of the TON chains, it triggers a transaction.
+根據 [TON 虛擬機 - TVM](https://ton-blockchain.github.io/docs/tvm.pdf) 的文檔，當 TON 鏈之一的賬戶發生事件時，它會觸發一個交易。
 
-Each transaction consists of up to 5 phases(stages). Read more [here](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=transactions-and-phases).
+每個交易由最多 5 個階段組成。詳情請參見[這裡](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=transactions-and-phases)。
 
-We are interested in **Compute phase**. And to be more specific, what is "on the stack" during initialization. For normal message-triggered transactions, the initial state of the stack looks like this:
+我們感興趣的是**計算階段**。具體來說，是初始化時“在棧上”的內容。對於正常消息觸發的交易，棧的初始狀態如下：
 
-5 elements:
-- Smart contract balance (in nanoTons)
-- Incoming message balance (in nanotones)
-- Cell with incoming message
-- Incoming message body, slice type
-- Function selector (for recv_internal it is 0)
+5 個元素：
+- 智能合約餘額（以 nanoTons 為單位）
+- 傳入消息的餘額（以 nanoTons 為單位）
+- 包含傳入消息的 Cell
+- 傳入消息正文，類型為 slice
+- 函數選擇器（對於 `recv_internal` 是 0）
 
-As a result, we get the following code:
+最終，我們得到以下代碼：
 
-    () recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
 
-    }
-	
-## Sender's address
+}
+```
 
-In accordance with the task, we need to take the address of the sender. We will take the address from the cell with the incoming message `in_msg_full`. Let's move the code to a separate function.
+## 發送者地址
 
-	() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-	  slice sender_address = parse_sender_address(in_msg_full);
-	}
-	
-##### Writing a function
+根據任務要求，我們需要獲取發送者的地址。我們將從 `in_msg_full` 中的消息 Cell 獲取地址。我們將代碼移到一個單獨的函數中。
 
-Let's write the code of the parse_sender_address function, which takes the sender's address from the message cell and parse it:
+```func
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+}
+```
 
-	slice parse_sender_address (cell in_msg_full) inline {
-	  var cs = in_msg_full.begin_parse();
-	  var flags = cs~load_uint(4);
-	  slice sender_address = cs~load_msg_addr();
-	  return sender_address;
-	}
+### 編寫函數
 
-As you can see the function has an `inline` specifier, its code is actually substituted at every place where the function is called.
+讓我們編寫 `parse_sender_address` 函數的代碼，從消息 Cell 中提取發送者地址並解析它：
 
-In order for us to take the address, we need to convert the cell into a slice using `begin_parse`:
+```func
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  var flags = cs~load_uint(4);
+  slice sender_address = cs~load_msg_addr();
+  return sender_address;
+}
+```
 
-	var cs = in_msg_full.begin_parse();
+如您所見，該函數有一個 `inline` 修飾符，其代碼實際上會在每個調用函數的地方被替換。
 
-Now we need to "subtract" the resulting slice to the address. Using the `load_uint` function from the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib) it loads an unsigned n-bit integer from the slice, "subtract" the flags.
+為了獲取地址，我們需要使用 `begin_parse` 將 Cell 轉換為 slice：
 
-	var flags = cs~load_uint(4);
+```func
+var cs = in_msg_full.begin_parse();
+```
 
-In this lesson, we will not dwell on the flags in detail, but you can read more in paragraph [3.1.7](https://ton-blockchain.github.io/docs/tblkch.pdf).
+現在我們需要“減去”得到的 slice 來獲取地址。使用 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib) 中的 `load_uint` 函數從 slice 中加載一個無符號的 n 位整數，並“減去”標誌。
 
-And finally, the address. Use `load_msg_addr()` - which loads from the slice the only prefix that is a valid MsgAddress.
+```func
+var flags = cs~load_uint(4);
+```
 
-	slice sender_address = cs~load_msg_addr();
-	return sender_address;
+在這一課中，我們不會詳細討論標誌，但您可以在[3.1.7 節](https://ton-blockchain.github.io/docs/tblkch.pdf)中閱讀更多內容。
 
-## Address of the recipient
+最後，使用 `load_msg_addr()` 加載唯一前綴為有效 MsgAddress 的地址。
 
-We will take the address from [c4](https://ton-blockchain.github.io/docs/tvm.pdf) which we have already talked about in previous lessons.
+```func
+slice sender_address = cs~load_msg_addr();
+return sender_address;
+```
 
-We will use:
-`get_data` - Gets a cell from the c4 register.
-`begin_parse` - converts a cell into a slice.
-`load_msg_addr()` - which loads from the slice the only prefix that is a valid MsgAddress.
+## 接收者地址
 
-As a result, we get the following function:
+我們將從 [c4](https://ton-blockchain.github.io/docs/tvm.pdf) 中獲取地址，我們在之前的課程中已經討論過。
 
-	slice load_data () inline {
-	  var ds = get_data().begin_parse();
-	  return ds~load_msg_addr();
-	}
+我們將使用：
+`get_data` - 從 c4 寄存器獲取一個 Cell。
+`begin_parse` - 將 Cell 轉換為 slice。
+`load_msg_addr()` - 加載唯一前綴為有效 MsgAddress 的地址。
 
+最終，我們得到以下函數：
 
-It remains only to call it:
+```func
+slice load_data () inline {
+  var ds = get_data().begin_parse();
+  return ds~load_msg_addr();
+}
+```
 
-	slice load_data () inline {
-	  var ds = get_data().begin_parse();
-	  return ds~load_msg_addr();
-	}
+只需調用它即可：
 
-	slice parse_sender_address (cell in_msg_full) inline {
-	  var cs = in_msg_full.begin_parse();
-	  var flags = cs~load_uint(4);
-	  slice sender_address = cs~load_msg_addr();
-	  return sender_address;
-	}
+```func
+slice load_data () inline {
+  var ds = get_data().begin_parse();
+  return ds~load_msg_addr();
+}
 
-	() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-	  slice sender_address = parse_sender_address(in_msg_full);
-	  slice owner_address = load_data();
-	}
-	
-## Check the address equality condition
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  var flags = cs~load_uint(4);
+  slice sender_address = cs~load_msg_addr();
+  return sender_address;
+}
 
-By the condition of the task, the proxy should not forward the message if the contract owner accesses the smart contract of the proxy. Therefore, it is necessary to compare two addresses.
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+  slice owner_address = load_data();
+}
+```
 
-##### Compare Function
+## 檢查地址是否相等的條件
 
-FunC support function definition in assembler (meaning Fift). This happens as follows - we define the function as a low-level TVM primitive. For the comparison function it would look like this:
+根據任務要求，如果合約擁有者訪問代理智能合約，代理不應該轉發消息。因此，有必要比較兩個地址。
 
-	int equal_slices (slice a, slice b) asm "SDEQ";
+### 比較函數
 
-As you can see, the `asm` keyword is used
+FunC 支持在彙編中定義函數（即 Fift）。這樣做的方法是 - 我們將函數定義為低級 TVM 原語。對於比較函數，它會看起來像這樣：
 
-You can see the list of possible primitives from page 77 in [TVM](https://ton-blockchain.github.io/docs/tvm.pdf).
+```func
+int equal_slices (slice a, slice b) asm "SDEQ";
+```
 
-##### Unary operator
+如您所見，使用了 `asm` 關鍵字。
 
-So we will use our `equal_slices` function in `if`:
+您可以在 [TVM](https://ton-blockchain.github.io/docs/tvm.pdf) 第 77 頁起查看可能的原語列表。
 
-	() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-	  slice sender_address = parse_sender_address(in_msg_full);
-	  slice owner_address = load_data();
+### 一元運算符
 
-	  if  equal_slices(sender_address, owner_address) {
+我們將在 `if` 中使用我們的 `equal_slices` 函數：
 
-	   }
-	}
-	
-But the function will check exactly the equality, how to check the inequality? The unary operator `~`, which is bitwise not, can help here. Now our code looks like this:
+```func
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+  slice owner_address = load_data();
 
-	int equal_slices (slice a, slice b) asm "SDEQ";
+  if  equal_slices(sender_address, owner_address) {
 
-	slice load_data () inline {
-	  var ds = get_data().begin_parse();
-	  return ds~load_msg_addr();
-	}
+   }
+}
+```
 
-	slice parse_sender_address (cell in_msg_full) inline {
-	  var cs = in_msg_full.begin_parse();
-	  var flags = cs~load_uint(4);
-	  slice sender_address = cs~load_msg_addr();
-	  return sender_address;
-	}
+但該函數將檢查相等性，如何檢查不等性？這裡可以使用一元運算符 `~`，它是按位非。現在我們的代碼看起來像這樣：
 
-	() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-	  slice sender_address = parse_sender_address(in_msg_full);
-	  slice owner_address = load_data();
+```func
+int equal_slices (slice a, slice b) asm "SDEQ";
 
-	  if ~ equal_slices(sender_address, owner_address) {
+slice load_data () inline {
+  var ds = get_data().begin_parse();
+  return ds~load_msg_addr();
+}
 
-	   }
-	}
-	
-It remains to send a message.
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  var flags = cs~load_uint(4);
+  slice sender_address = cs~load_msg_addr();
+  return sender_address;
+}
 
-## Send message
-So it remains for us to fill the body of the conditional operator in accordance with the task, namely, to send an incoming message.
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+  slice owner_address = load_data();
 
-##### Message structure
+  if ~ equal_slices(sender_address, owner_address) {
 
-The full message structure can be found [here - message layout](https://ton-blockchain.github.io/docs/#/smart-contracts/messages?id=message-layout). But usually we don't need to control each field, so we can use the short form from [example](https://ton-blockchain.github.io/docs/#/smart-contracts/messages?id=sending-messages):
+   }
+}
+```
 
+現在只剩下發送消息。
 
-	 var msg = begin_cell()
-		.store_uint(0x18, 6)
-		.store_slice(addr)
-		.store_coins(amount)
-		.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-		.store_slice(message_body)
-	  .end_cell();
+## 發送消息
 
+現在我們需要根據任務要求填充條件運算符的主體，即發送傳入的消息。
 
-As you can see, functions from the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib) are used to construct the message. Namely, the "wrapper" functions of the Builder primitives (partially built cells, as you may remember from the first lesson). Consider:
+### 消息結構
 
- `begin_cell()` - will create a Builder for the future cell
- `end_cell()` - will create a Cell (cell)
- `store_uint` - store uint in Builder
- `store_slice` - store the slice in the Builder
- `store_coins` - here the documentation means `store_grams` - used to store TonCoins. More details [here](https://ton-blockchain.github.io/docs/#/func/stdlib?id=store_grams).
-  
- And also additionally consider `store_ref`, which will be needed to send the address.
+完整的消息結構可以在[這裡 - 消息佈局](https://ton-blockchain.github.io/docs/#/smart-contracts/messages?id=message-layout)找到。但通常我們不需要控制每個字段，因此我們可以使用來自[示例](https://ton-blockchain.github.io/docs/#/smart-contracts/messages?id=sending-messages)的簡短形式：
+
+```func
+ var msg = begin_cell()
+    .store_uint(0x18, 6)
+    .store_slice(addr)
+    .store_coins(amount)
+    .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+    .store_slice(message_body)
+  .end_cell();
+```
+
+如您所見，構建消息使用了 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib) 中的函數。具體來說，是 Builder 原語的“封裝”函數（部分構建的 Cell，您可能還記得第一課）。考慮以下函數：
+
+ `begin_cell()` - 創建一個 Builder 用於未來的 Cell
+ `end_cell()` - 創建一個 Cell
+ `store_uint` - 在 Builder 中存儲 uint
+ `store_slice` - 在 Builder 中存儲 slice
+ `store_coins` - 文檔中實際上是 `store_grams` - 用於存儲 TonCoins。詳情請參見[這裡](https://ton-blockchain.github.io/docs/#/func/stdlib?id=store_grams)。
+
+另外，考慮 `store_ref`，這將在發送地址時需要。
+
+ `store_ref` - 在 Builder 中存儲一個 Cell 引用
+ 現在我們有了所有必要的信息，讓我們組裝消息。
+
+### 最後一步 - 傳入消息的主體
+
+要在消息中發送 `recv_internal` 中接收到的消息主體，我們將組裝 Cell，並在消息中使用 `store_ref` 將其引用。
+
+```func
+  if ~ equal_slices(sender_address, owner_address) {
+    cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
+   }
+```
+
+### 組裝消息
+
+根據問題的條件，我們必須發送地址和消息主體。因此，將 `.store_slice(message_body)` 更改為 `.store_slice(sender_address)`，並將 `.store_ref(msg_body_cell)` 添加到 msg 變量中。我們得到：
+
+```func
+  if ~ equal_slices(sender_address, owner_address) {
+    cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
+
+    var msg = begin_cell()
+          .store_uint(0x10, 6)
+          .store_slice(owner_address)
+          .store_grams(0)
+          .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+          .store_slice(sender_address)
+          .store_ref(msg_body_cell)
+          .end_cell();
+   }
+```
+
+只剩下發送我們的消息。
+
+### 消息發送模式
+
+要發送消息，使用 [標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message) 中的 `send_raw_message`。
+
+我們已經組裝了 msg 變量，只剩下弄清 `mode`。每個模式在[文檔](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message)中都有描述。讓我們看一個例子來更清楚地理解。
+
+假設智能合約餘額為 100 coins，並且我們接收到一個包含 60 coins 的內部消息，並發送一個包含 10 coins 的消息，總費用為 3 coins。
+
+ `mode = 0` - 餘額 (100+60-10 = 150 coins)，發送(10-3 = 7 coins)
+ `mode = 1` - 餘額 (100+60-10-3 = 147 coins)，發送(10 coins)
+ `mode = 64` - 餘額 (100-10 = 90 coins)，發送 (60+10-3 = 67 coins)
+ `mode = 65` - 餘額 (100-10-3=87 coins)，發送 (60+10 = 70 coins)
+ `mode = 128` - 餘額 (0 coins)，發送 (100+60-3 = 157 coins)
  
- `store_ref` - Stores a cell reference in the Builder
- Now that we have all the necessary information, let's assemble the message.
+ 上述的 mode 1 和 65 是 mode' = mode + 1。
+
+由於問題要求附加到消息中的 Toncoin 數量必須等於傳入消息的數量減去處理相關的費用。`mode = 64` 配合 `.store_grams(0)` 將適合我們。該示例將導致以下結果：
+
+假設智能合約餘額為 100 coins，並且我們接收到一個包含 60 coins 的內部消息，並發送一個包含 0 coins 的消息（因為 `.store_grams(0)`），總費用為 3 coins。
+
+ `mode = 64` - 餘額 (100 = 100 coins)，發送 (60-3 = 57 coins)
  
- ##### The final touch - the body of the incoming message
+ 所以我們的條件語句將看起來像這樣：
 
-To send in a message the message body that came in `recv_internal`. we will collect the cell, and in the message itself we will make a link to it using `store_ref`.
+```func
+   if ~ equal_slices(sender_address, owner_address) {
+    cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
 
-	  if ~ equal_slices(sender_address, owner_address) {
-		cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
-	   }
+    var msg = begin_cell()
+          .store_uint(0x10, 6)
+          .store_slice(owner_address)
+          .store_grams(0)
+          .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+          .store_slice(sender_address)
+          .store_ref(msg_body_cell)
+          .end_cell();
+     send_raw_message(msg, 64);
+   }
+```
 
-##### Collecting the message
+完整的智能合約代碼如下：
 
-In accordance with the condition of the problem, we must send the address and body of the message. So let's change `.store_slice(message_body)` to `.store_slice(sender_address)` and `.store_ref(msg_body_cell)` in the msg variable. We get:
+```func
+int equal_slices (slice a, slice b) asm "SDEQ";
 
-	  if ~ equal_slices(sender_address, owner_address) {
-		cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
+slice load_data () inline {
+  var ds = get_data().begin_parse();
+  return ds~load_msg_addr();
+}
 
-		var msg = begin_cell()
-			  .store_uint(0x10, 6)
-			  .store_slice(owner_address)
-			  .store_grams(0)
-			  .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			  .store_slice(sender_address)
-			  .store_ref(msg_body_cell)
-			  .end_cell();
-	   }
+slice parse_sender_address (cell in_msg_full) inline {
+  var cs = in_msg_full.begin_parse();
+  var flags = cs~load_uint(4);
+  slice sender_address = cs~load_msg_addr();
+  return sender_address;
+}
 
-It remains only to send our message.
+() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+  slice sender_address = parse_sender_address(in_msg_full);
+  slice owner_address = load_data();
 
-##### Message sending mode
+  if ~ equal_slices(sender_address, owner_address) {
+    cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
 
-To send messages, use `send_raw_message` from the [standard library](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message).
+    var msg = begin_cell()
+          .store_uint(0x10, 6)
+          .store_slice(owner_address)
+          .store_grams(0)
+          .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+          .store_slice(sender_address)
+          .store_ref(msg_body_cell)
+          .end_cell();
+     send_raw_message(msg, 64);
+   }
+}
+```
 
-We have already collected the msg variable, it remains to figure out `mode`. Each mode is described in [documentation](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message). Let's look at an example to make it clearer.
+## 結論
 
-Let there be 100 coins on the balance of the smart contract and we receive an internal message with 60 coins and send a message with 10, the total fee is 3.
-
- `mode = 0` - balance (100+60-10 = 150 coins), send(10-3 = 7 coins)
- `mode = 1` - balance (100+60-10-3 = 147 coins), send(10 coins)
- `mode = 64` - balance (100-10 = 90 coins), send (60+10-3 = 67 coins)
- `mode = 65` - balance (100-10-3=87 coins), send (60+10 = 70 coins)
- `mode = 128` -balance (0 coins), send (100+60-3 = 157 coins)
- 
- Modes 1 and 65 described above are mode' = mode + 1.
- 
-Since, according to the task, the value of Toncoin attached to the message must be equal to the value of the incoming message, minus the fees associated with processing. `mode = 64` with `.store_grams(0)` will do for us. The example will result in the following:
-
-Let there be 100 coins on the balance of the smart contract and we receive an internal message with 60 coins and send a message with 0 (because `.store_grams(0)`) , the total fee is 3.
-
- `mode = 64` - balance (100 = 100 coins), send (60-3 = 57 coins)
- 
- So our conditional statement will look like this:
-
- 
-	   if ~ equal_slices(sender_address, owner_address) {
-		cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
-
-		var msg = begin_cell()
-			  .store_uint(0x10, 6)
-			  .store_slice(owner_address)
-			  .store_grams(0)
-			  .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			  .store_slice(sender_address)
-			  .store_ref(msg_body_cell)
-			  .end_cell();
-		 send_raw_message(msg, 64);
-	   }
-
-And the full code of the smart contract:
-
-	int equal_slices (slice a, slice b) asm "SDEQ";
-
-	slice load_data () inline {
-	  var ds = get_data().begin_parse();
-	  return ds~load_msg_addr();
-	}
-
-	slice parse_sender_address (cell in_msg_full) inline {
-	  var cs = in_msg_full.begin_parse();
-	  var flags = cs~load_uint(4);
-	  slice sender_address = cs~load_msg_addr();
-	  return sender_address;
-	}
-
-	() recv_internal (int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-	  slice sender_address = parse_sender_address(in_msg_full);
-	  slice owner_address = load_data();
-
-	  if ~ equal_slices(sender_address, owner_address) {
-		cell msg_body_cell = begin_cell().store_slice(in_msg_body).end_cell();
-
-		var msg = begin_cell()
-			  .store_uint(0x10, 6)
-			  .store_slice(owner_address)
-			  .store_grams(0)
-			  .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			  .store_slice(sender_address)
-			  .store_ref(msg_body_cell)
-			  .end_cell();
-		 send_raw_message(msg, 64);
-	   }
-	}
-	
-## Conclusion
-
-Since the messages and our proxy function are `internal`, then it will not work to "pull" the contract through `toncli` - it works with messages inside the TON. How then to develop such contracts correctly - answer from [tests](https://en.wikipedia.org/wiki/Test-driven_development). Which we will write in the next lesson.
+由於消息和我們的代理功能是“內部的”，因此無法通過 `toncli` “調用” 合約 - 它在 TON 內部處理消息。那麼如何正確開發這樣的合約呢？答案來自[測試](https://en.wikipedia.org/wiki/Test-driven_development)。我們將在下一課中編寫測試。

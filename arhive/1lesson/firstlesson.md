@@ -1,329 +1,367 @@
-# Lesson 1: Simple FunC Smart Contract
-## Introduction
+# 課程 1：簡單的 FunC 智能合約
+## 介紹
 
-In this tutorial, we will write your first smart contract on The Open Network testnet in FunC language and deploy* it to the testnet using [toncli](https://github.com/disintar/toncli), and test it with the message in Fift language.
+在這個教學中，我們將在 The Open Network 測試網上使用 FunC 語言編寫您的第一個智能合約，並使用 [toncli](https://github.com/disintar/toncli) 部署* 到測試網，並使用 Fift 語言進行測試。
 
-> *Deploy is the process of transferring to the network (in this case, a smart contract to the blockchain)
+> *部署是將智能合約傳送到區塊鏈網絡的過程。
 
-## Requirements
+## 必要條件
 
-To complete this tutorial, you need to install the [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) command line interface.
+完成此教學，您需要安裝 [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) 命令行界面。
 
-## Smart contract
+## 智能合約
 
-The smart contract that we will create should have the following functionality:
-- store in its data an integer *total* - a 64-bit unsigned number;
-- when receiving an internal incoming message, the contract must take an unsigned 32-bit integer from the message body, add it to *total* and store it in the contract data;
-- The smart contract must provide a *get total* method that allows you to return the value of *total*
-- If the body of the incoming message is less than 32 bits, then the contract must throw an exception
+我們將創建的智能合約應具備以下功能：
+- 在其數據中存儲一個整數 *total* - 一個64位無符號數；
+- 當接收到內部傳入消息時，合約必須從消息正文中提取一個32位無符號整數，將其加到 *total* 並將結果存儲在合約數據中；
+- 智能合約必須提供一個 *get total* 方法，允許返回 *total* 的值；
+- 如果傳入消息的正文小於32位，則合約必須拋出異常。
 
-## Create a project with toncli
+## 使用 toncli 創建項目
 
-Run the following commands in the console:
+在控制台中運行以下命令：
 
-     toncli start wallet
-     cd wallet
+```shell
+toncli start wallet
+cd wallet
+```
 
-Toncli has created a simple wallet project, you can see 4 folders in it:
-- build;
-- func;
-- fift;
-- test;
+Toncli 創建了一個簡單的錢包項目，您可以看到其中有4個文件夾：
+- build；
+- func；
+- fift；
+- test；
 
-At this stage, we are interested in the func and fift folders, in which we will write code in FunС and Fift, respectively.
+在這個階段，我們關注的是 `func` 和 `fift` 文件夾，在這裡我們將分別用 FunC 和 Fift 編寫代碼。
 
-##### What is FunC and Fift
+### 什麼是 FunC 和 Fift
 
-The FunC high-level language is used to program smart contracts on TON. FunC programs are compiled into Fift assembler code, which generates the corresponding bytecode for the TON Virtual Machine (TVM) (More about TVM [here](https://ton-blockchain.github.io/docs/tvm.pdf)). Further, this bytecode (actually a tree of cells, like any other data in the TON Blockchain) can be used to create a smart contract on the blockchain or can be run on a local instance of TVM (TON Virtual Machine).
+FunC 是用於編寫 TON 智能合約的高級語言。FunC 程序被編譯為 Fift 彙編代碼，生成對應的 TON 虛擬機（TVM）字節碼（有關 TVM 的更多信息[在此](https://ton-blockchain.github.io/docs/tvm.pdf)）。該字節碼可以用於在區塊鏈上創建智能合約，或在本地 TVM 實例中運行。
 
-More information about FunC can be found [here](https://ton-blockchain.github.io/docs/#/smart-contracts/)
+有關 FunC 的更多信息可以在[這裡](https://ton-blockchain.github.io/docs/#/smart-contracts/)找到。
 
-##### Let's prepare a file for our code
+### 準備代碼文件
 
-Go to func folder:
+進入 `func` 文件夾：
 
-    cd func
+```shell
+cd func
+```
 
-And open the code.func file, on your screen you will see the wallet smart contract, delete all the code and we are ready to start writing our first smart contract.
+打開 `code.func` 文件，您將看到錢包智能合約，刪除所有代碼，準備開始編寫我們的第一個智能合約。
 
-## External methods
+## 外部方法
 
-Smart contracts on the TON network have two reserved methods that can be accessed.
+TON 網絡上的智能合約有兩個保留方法可以訪問。
 
-First, `recv_external()` this function is executed when a request to the contract comes from the outside world, that is, not from TON, for example, when we form a message ourselves and send it via lite-client (About installing [lite-client](https://ton-blockchain.github.io/docs/#/compile?id=lite-client)).
-Second, `recv_internal()` this function is executed when inside TON itself, for example, when any contract refers to ours.
- 
- > Light client (English lite-client) is a software that connects to full nodes to interact with the blockchain. They help users access and interact with the blockchain without the need to synchronize the entire blockchain.
- 
-`recv_internal()` fits our conditions.
+首先，`recv_external()` 函數在來自外部世界的請求到達合約時執行，即不來自 TON 內部，例如，我們自己生成消息並通過 lite-client 發送時（有關安裝 [lite-client](https://ton-blockchain.github.io/docs/#/compile?id=lite-client) 的信息）。
+其次，`recv_internal()` 函數在 TON 內部執行，例如，當任何合約調用我們的合約時。
 
-In the `code.fc` file we write:
+> 輕客戶端（lite-client）是連接到完整節點以與區塊鏈交互的軟件。它們幫助用戶訪問和交互區塊鏈，而無需同步整個區塊鏈。
 
-     () recv_internal(slice in_msg_body) impure {
-     ;; here will be the code
-     }
- 
-  > FunC has single-line comments, which start with `;;` (double `;`).
-  
-We pass the in_msg_body slice to the function and use the impure keyword
+`recv_internal()` 符合我們的需求。
 
-`impure` is a keyword that indicates that the function changes the smart contract data.
+在 `code.fc` 文件中編寫：
 
-For example, we must specify the `impure` specifier if the function can modify the contract store, send messages, or throw an exception when some data is invalid and the function is intended to validate that data.
+```func
+() recv_internal(slice in_msg_body) impure {
+  ;; 這裡將是代碼
+}
+```
 
-Important: If impure is not specified and the result of a function call is not used, then the FunC compiler may remove that function call.
+> FunC 有單行註釋，以 `;;`（雙 `;`）開始。
 
-But in order to understand what a slice is, let's talk about the types in the smart contracts of the TON network
+我們將 `in_msg_body` slice 傳遞給函數並使用 `impure` 關鍵字。
 
-##### Cell, slice, builder, integer types in FunC
+`impure` 是一個關鍵字，表示函數會更改智能合約數據。
 
-In our simple smart contract, we will use only four types:
+例如，如果函數可以修改合約存儲、發送消息或在某些數據無效時拋出異常，則必須指定 `impure`。
 
-- Cell - TVM cell consisting of 1023 bits of data and up to 4 references to other cells
-- Slice - a partial representation of the TVM cell used to parse data from the cell
-- Builder - partially built cell containing up to 1023 bits of data and up to four links; can be used to create new cells
-- Integer - signed 257-bit integer
+重要：如果沒有指定 `impure` 且函數調用的結果未被使用，則 FunC 編譯器可能會刪除該函數調用。
 
-More about types in FunC:
-[briefly here](https://ton-blockchain.github.io/docs/#/smart-contracts/) ,
-[detailed description here in section 2.1](https://ton-blockchain.github.io/docs/fiftbase.pdf)
+但是為了理解 slice 是什麼，我們來談談 TON 網絡智能合約中的類型。
 
-In simple terms, cell is a sealed cell, slice is when the cell can be read, and builder is when you assemble the cell.
+### FunC 中的 Cell、Slice、Builder、整數類型
 
-## Convert the resulting slice to Integer
+在我們的簡單智能合約中，我們將使用以下四種類型：
 
-To convert the resulting slice to Integer, add the following code:
+- Cell - TVM 單元，由 1023 位數據和最多 4 個引用組成；
+- Slice - TVM 單元的部分表示，用於解析單元中的數據；
+- Builder - 部分構建的單元，包含最多 1023 位數據和最多四個鏈接；可以用於創建新單元；
+- Integer - 簽名的 257 位整數。
+
+有關 FunC 類型的更多信息：
+[簡要介紹](https://ton-blockchain.github.io/docs/#/smart-contracts/)、
+[詳細描述在 2.1 節](https://ton-blockchain.github.io/docs/fiftbase.pdf)
+
+簡單來說，Cell 是密封的單元，Slice 是可以讀取的單元，而 Builder 是用來組裝單元的。
+
+## 將結果 Slice 轉換為整數
+
+要將結果 Slice 轉換為整數，請添加以下代碼：
 `int n = in_msg_body~load_uint(32);`
 
-The `recv_internal()` function now looks like this:
+`recv_internal()` 函數現在看起來像這樣：
 
-     () recv_internal(slice in_msg_body) impure {
-		int n = in_msg_body~load_uint(32);
-     }
+```func
+() recv_internal(slice in_msg_body) impure {
+    int n = in_msg_body~load_uint(32);
+}
+```
 
-`load_uint` function is from the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib) it loads an unsigned n-bit integer from a slice.
+`load_uint` 函數來自 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib)，它從 Slice 加載一個無符號的 n 位整數。
 
-## Persistent smart contract data
+## 持久化智能合約數據
 
-To add the resulting variable to `total` and store the value in the smart contract, let's look at how the persistent data/storage functionality is implemented in TON.
+為了將結果變量加到 `total` 並將值存儲在智能合約中，我們來看看 TON 中實現持久數據/存儲的方式。
 
->Note: Do not confuse with TON Storage, the storage in the previous sentence is a convenient analogy.
+> 注意：不要與 TON Storage 混淆，此處的存儲是一個方便的比喻。
 
-The TVM virtual machine is stack-based, so it is good practice to store data in a contract using a specific register, rather than storing the data "on top" of the stack.
+TVM 虛擬機是基於棧的，所以將數據存儲在合約中使用特定的寄存器，而不是將數據存儲在棧頂是個好習慣。
 
-To store permanent data, register c4 is assigned, the data type is Cell.
+要存儲永久數據，使用寄存器 c4，數據類型為 Cell。
 
-More details about the registers can be found [c4](https://ton-blockchain.github.io/docs/tvm.pdf) in paragraph 1.3
+有關寄存器的更多信息可以在 [c4](https://ton-blockchain.github.io/docs/tvm.pdf) 的 1.3 節找到。
 
-##### Take data from c4
+### 從 c4 獲取數據
 
-In order to "get" data from c4, we need two functions from the FunC standard library.
+為了從 c4 獲取數據，我們需要 FunC 標準庫中的兩個函數。
 
-Namely:
-`get_data` - Gets a cell from the c4 register.
-`begin_parse` - converts a cell into a slice
+分別是：
+`get_data` - 從 c4 寄存器獲取一個 Cell。
+`begin_parse` - 將 Cell 轉換為 Slice。
 
-Pass this value to slice ds
+將該值傳遞給 Slice `ds`：
 
-`slice ds = get_data().begin_parse();`
+```func
+slice ds = get_data().begin_parse();
+```
 
-And also we will transform this slice into Integer 64-bit for summation in accordance with our task. (With the help of the `load_uint` function already familiar to us)
+同時我們將該 Slice 轉換為 64 位整數以進行加法運算（使用我們已熟悉的 `load_uint` 函數）。
 
-`int total = ds~load_uint(64);`
+```func
+int total = ds~load_uint(64);
+```
 
-Now our function will look like this:
+現在我們的函數如下：
 
-    () recv_internal(slice in_msg_body) impure {
-		int n = in_msg_body~load_uint(32);
+```func
+() recv_internal(slice in_msg_body) impure {
+    int n = in_msg_body~load_uint(32);
 
-		slice ds = get_data().begin_parse();
-		int total = ds~load_uint(64);
-    }
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
+}
+```
 
-##### Sum up
+### 累加
 
-For summation, we will use the binary summation operation `+` and the assignment `=`
+使用二進制加法運算 `+` 和賦值 `=` 來進行加法運算：
 
-    () recv_internal(slice in_msg_body) impure {
-		int n = in_msg_body~load_uint(32);
+```func
+() recv_internal(slice in_msg_body) impure {
+    int n = in_msg_body~load_uint(32);
 
-		slice ds = get_data().begin_parse();
-		int total = ds~load_uint(64);
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
 
-		total += n;
-    }
+    total += n;
+}
+```
 
-##### Save the value
+### 保存值
 
-In order to keep a constant value, we need to do four things:
+為了保持一個常數值，我們需要做四件事：
 
-- create a Builder for the future cell
-- write a value to it
-- from Builder create Cell (cell)
-- Write the resulting cell to the register
+- 創建一個 Builder 用於未來的 Cell；
+- 將值寫入其中；
+- 從 Builder 創建 Cell；
+- 將結果 Cell 寫入寄存器。
 
-We will do this again using the functions of the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib)
+我們將再次使用 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib) 的函數：
 
-`set_data(begin_cell().store_uint(total, 64).end_cell());`
+```func
+set_data(begin_cell().store_uint(total, 64).end_cell());
+```
 
-`begin_cell()` - creates a Builder for the future cell
-`store_uint()` - writes the value of total
-`end_cell()`- create Cell (cell)
-`set_data()` - writes the cell to register c4
+`begin_cell()` - 創建 Builder 用於未來的 Cell。
+`store_uint()` - 寫入 `total` 的值。
+`end_cell()` - 創建 Cell。
+`set_data()` - 將 Cell 寫入寄存器 c4。
 
-Outcome:
+結果：
 
-    () recv_internal(slice in_msg_body) impure {
-		int n = in_msg_body~load_uint(32);
+```func
+() recv_internal(slice in_msg_body) impure {
+    int n = in_msg_body~load_uint(32);
 
-		slice ds = get_data().begin_parse();
-		int total = ds~load_uint(64);
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
 
-		total += n;
+    total += n;
 
-		set_data(begin_cell().store_uint(total, 64).end_cell());
-    }
-	
-## Throw exceptions
+    set_data(begin_cell().store_uint(total, 64).end_cell());
+}
+```
 
-All that's left to do in our internal function is to add an exception call if the received variable is not 32-bit.
+## 拋出異常
 
-For this we will use [built-in](https://ton-blockchain.github.io/docs/#/func/builtins) exceptions.
+我們內部函數需要做的最後一件事是，如果接收的變量不是32位，則拋出異常。
 
-Exceptions can be thrown by the conditional primitives `throw_if` and `throw_unless` and the unconditional `throw` .
+我們將使用 [內置](https://ton-blockchain.github.io/docs/#/func/builtins) 異常。
 
-Let's use `throw_if` and pass any error code. In order to take the bitness we use `slice_bits()`.
+異常可以由條件原語 `throw_if` 和 `throw_unless` 以及無條件的 `throw` 拋出。
 
-throw_if(35,in_msg_body.slice_bits() < 32);
+我們使用 `throw_if` 並傳遞任何錯誤代碼。為了獲取位數，我們使用 `slice_bits()`。
 
-By the way, in the TON TVM virtual machine, there are standard exception codes, we will really need them in tests. You can view it [here](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes).
+```func
+throw_if(35, in_msg_body.slice_bits() < 32);
+```
 
-Insert at the beginning of the function:
+順便說一下，在 TON TVM 虛擬機中，有標準異常代碼，我們在測試中確實需要它們。您可以在[這裡](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes)查看。
 
-    () recv_internal(slice in_msg_body) impure {
-		throw_if(35,in_msg_body.slice_bits() < 32);
+插入函數的開頭：
 
-		int n = in_msg_body~load_uint(32);
+```func
+() recv_internal(slice in_msg_body) impure {
+    throw_if(35, in_msg_body.slice_bits() < 32);
 
-		slice ds = get_data().begin_parse();
-		int total = ds~load_uint(64);
+    int n = in_msg_body~load_uint(32);
 
-		total += n;
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
 
-		set_data(begin_cell().store_uint(total, 64).end_cell());
-    }
-	
-## Write a Get function
+    total += n;
 
-Any function in FunC matches the following pattern:
+    set_data(begin_cell().store_uint(total, 64).end_cell());
+}
+```
 
-`[<forall declarator>] <return_type><function_name(<comma_separated_function_args>) <specifiers>`
+## 寫一個 Get 函數
 
-Let's write a get_total() function that returns an Integer and has a method_id specification (more on that later)
+在 FunC 中，任何函數都遵循以下模式：
+
+`[<forall declarator>] <return_type> <function_name>(<comma_separated_function_args>) <specifiers>`
+
+讓我們編寫一個返回整數並具有 method_id 規範的 `get_total()` 函數（稍後會詳細介紹）。
+
+```func
+int get_total() method_id {
+    ;; 這裡將是代碼
+}
+```
+
+### Method_id
+
+method_id 規範允許您從 lite-client 或 ton-explorer 調用 GET 函數。
+
+簡單來說，所有的函數都有一個數字標識符，GET 方法的標識符是它們名稱的 crc16 哈希值。
+
+### 從 c4 獲取數據
+
+為了讓函數返回存儲在合約中的 `total`，我們需要從寄存器中獲取數據，我們已經做到過這一點：
+
+```func
+int get_total() method_id {
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
+
+    return total;
+}
+```
+
+## 我們的智能合約的所有代碼
+
+```func
+() recv_internal(slice in_msg_body) impure {
+    throw_if(35, in_msg_body.slice_bits() < 32);
+
+    int n = in_msg_body~load_uint(32);
+
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
+
+    total += n;
+
+    set_data(begin_cell().store_uint(total, 64).end_cell());
+}
  
-    int get_total() method_id {
-  	;; здесь будет код
-	}
+int get_total() method_id {
+    slice ds = get_data().begin_parse();
+    int total = ds~load_uint(64);
 
-##### Method_id
+    return total;
+}
+```
 
-The method_id specification allows you to call a GET function by name from lite-client or ton-explorer.
-Roughly speaking, all functions in that volume have a numerical identifier, get methods are numbered by crc16 hashes of their names.
+## 部署合約到測試網
 
-##### Get data from c4
+要部署到測試網，我們將使用命令行界面 [toncli](https://github.com/disintar/toncli/)
 
-In order for the function to return the total stored in the contract, we need to take the data from the register, which we have already done:
+```shell
+toncli deploy -n testnet
+```
 
-    int get_total() method_id {
-  		slice ds = get_data().begin_parse();
- 	 	int total = ds~load_uint(64);
-		
-  		return total;
-	}
-	
-## All code of our smart contract
+### 如果提示 TON 不足該怎麼辦？
 
-    () recv_internal(slice in_msg_body) impure {
-		throw_if(35,in_msg_body.slice_bits() < 32);
+您需要從測試水龍頭獲取 TON，這個機器人是 @testgiver_ton_bot。
 
-		int n = in_msg_body~load_uint(32);
+您可以直接在控制台中看到錢包地址，部署命令後，toncli 會在 INFO 行的右側顯示它：Found existing deploy-wallet
 
-		slice ds = get_data().begin_parse();
-		int total = ds~load_uint(64);
+要檢查 TON 是否到達您的測試網錢包，可以使用這個瀏覽器：https://testnet.tonscan.org/
 
-		total += n;
+> 重要：這僅是測試網。
 
-		set_data(begin_cell().store_uint(total, 64).end_cell());
-    }
-	 
-    int get_total() method_id {
-  		slice ds = get_data().begin_parse();
- 	 	int total = ds~load_uint(64);
-		
-  		return total;
-	}
-	
-## Deploy the contract to the testnet
+## 測試合約
 
-For deployment to the test network, we will use the command line interface [toncli](https://github.com/disintar/toncli/)
+### 調用 recv_internal()
 
-`toncli deploy -n testnet`
+要調用 `recv_internal()`，您需要在 TON 網絡中發送一個消息。使用 [toncli send](https://github.com/disintar/toncli/blob/master/docs/advanced/send_fift_internal.md)
 
-##### What to do if it says that there is not enough TON?
+讓我們編寫一個小的 Fift 腳本，將 32 位消息發送到我們的合約。
 
-You need to get them from the test faucet, the bot for this is @testgiver_ton_bot
-You can see the wallet address directly in the console, after the deploy command, toncli will display it to the right of the INFO line: Found existing deploy-wallet
+### 消息腳本
 
-To check if TON came to your wallet on the test network, you can use this explorer: https://testnet.tonscan.org/
+為此，在 `fift` 文件夾中創建一個 `try.fif` 文件，並在其中寫入以下代碼：
 
-> Important: This is only a testnet
+```fift
+"Asm.fif" include
 
-## Testing the contract
+<b
+    11 32 u, // 數字
+b>
+```
 
-##### Call recv_internal()
+`"Asm.fif" include` - 用於將消息編譯為字節碼。
 
-To call recv_internal(), you need to send a message within the TON network.
-With [toncli send](https://github.com/disintar/toncli/blob/master/docs/advanced/send_fift_internal.md)
+現在分析消息：
 
-Let's write a small Fift script that will send a 32-bit message to our contract.
+`<b b>` - 創建 Builder 單元，更多詳細信息請參見[5.2 節](https://ton-blockchain.github.io/docs/fiftbase.pdf)。
 
-##### Message script
+`10 32 u` - 放置 32 位無符號整數 10。
 
-To do this, create a `try.fif` file in the fift folder and write the following code in it:
- 
-    "Asm.fif" include
-	
-	<b
-		11 32 u, // number
-	b>
-	
+` // 數字` - 單行註釋。
 
-`"Asm.fif" include` - needed to compile message into bytecode
+### 部署生成的消息
 
-Now consider the message:
+在命令行中：
 
-`<b b>` - create Builder cells, more details in paragraph [5.2](https://ton-blockchain.github.io/docs/fiftbase.pdf)
+```shell
+toncli send -n testnet -a 0.03 --address "您的合約地址" --body ./fift/try.fif
+```
 
-`10 32 u` - put 32-bit unsigned integer 10
+現在測試 GET 函數：
 
-` // number` - single line comment
+```shell
+toncli get get_total
+```
 
-##### Deploy the resulting message
-
-On the command line:
-
-`toncli send -n testnet -a 0.03 --address "address of your contract" --body ./fift/try.fif`
-
-Now let's test the GET function:
-
-`toncli get get_total`
-
-You should get the following:
+您應該會得到以下結果：
 
 ![toncli get send](./img/tonclisendget.png)
 
-## Congratulations you made it to the end
+## 恭喜您完成了
 
-##### Exercise
+### 練習
 
-As you may have noticed, we have not tested the exception, modify the message so that the smart contract throws an exception.
+如您所見，我們尚未測試異常，請修改消息，使智能合約拋出異常。

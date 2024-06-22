@@ -1,475 +1,486 @@
-# Lesson 6 FunC tests for smart contract with op and query_id
-## Introduction
+# 課程 6：包含 `op` 和 `query_id` 的智能合約測試
+## 介紹
 
-In this tutorial, we will write tests for the smart contract created in the fifth lesson on The Open Network testnet in FUNC language and execute them using [toncli](https://github.com/disintar/toncli).
+在這節課中，我們將為第五課中在 The Open Network 測試網中使用 FUNC 語言創建的智能合約編寫測試，並使用 [toncli](https://github.com/disintar/toncli) 執行這些測試。
 
-## Requirements
+## 必要條件
 
-To complete this tutorial, you need to install the [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) command line interface and complete [lesson 5](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/5lesson/fifthlesson.md) .
+完成此教學，您需要安裝 [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) 命令行界面，並完成[第五課](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/5lesson/fifthlesson.md)。
 
-## Important
+## 重要事項
 
-Written below describes the old version of the tests. New toncli tests, currently available for dev version of func/fift, instruction [here](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests_new.md), lesson on new tests [ here](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/11lesson/11lesson.md). The release of new tests does not mean that the lessons on the old ones are meaningless - they convey the logic well, so success in passing the lesson. Also note that old tests can be used with the `--old` flag when using `toncli run_tests`
+以下描述的是舊版本的測試。新版本的 toncli 測試，目前適用於 func/fift 的開發版本，說明請參見[這裡](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests_new.md)，新測試課程請參見[這裡](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/11lesson/11lesson.md)。新測試的發布並不意味著舊課程無效——它們很好地傳達了邏輯，因此通過這些課程仍然有價值。請注意，使用 `toncli run_tests` 時，可以使用 `--old` 標誌來運行舊測試。
 
-## Task of the fifth lesson
+## 第五課的任務
 
-For convenience, I recall here what we did in the fifth lesson. The smart contract will remember the address set by the manager and communicate it to anyone who requests it, in particular the following functionality**:
-- when the contract receives a message from the Manager with `op` equal to 1
-  followed by some `query_id` followed by `MsgAddress`, it should store the resulting address in storage.
-- when a contract receives an internal message from any address with `op` equal to 2 followed by `query_id`, it must reply to the sender with a message with a body containing:
-  - `op` is equal to 3
-  - same `query_id`
-  - Manager's address
-  - The address that has been remembered since the last manager request (an empty address `addr_none` if there was no manager request yet)
-  - The TON value attached to the message minus the processing fee.
-- when the smart contract receives any other message, it must throw an exception.
+為方便起見，這裡回顧一下我們在第五課中所做的事情。智能合約將記住由管理者設置的地址，並將其傳達給任何請求者，具體功能如下**：
+- 當合約接收到來自管理者的 `op` 等於 1 的訊息，後跟一些 `query_id` 和 `MsgAddress` 時，應將接收到的地址存儲在存儲中。
+- 當合約接收到來自任何地址的內部訊息，`op` 等於 2，後跟 `query_id` 時，應回覆發送者一個包含以下內容的訊息：
+  - `op` 等於 3
+  - 相同的 `query_id`
+  - 管理者的地址
+  - 自上次管理者請求以來記住的地址（如果尚未有管理者請求，則為空地址 `addr_none`）
+  - 附加到訊息中的 TON 值減去處理費用。
+- 當智能合約接收到任何其他訊息時，應拋出異常。
 
-## Tests for smart contract with op and query_id
+## 包含 `op` 和 `query_id` 的智能合約測試
 
-For our proxy smart contract, we will write the following tests:
+我們將為智能合約編寫以下測試：
 
-- test_example() saving addresses with op = 1
-- only_manager_can_change() test that if op = 1, only the manager can change the address in the smart contract
-- query() contract work when op = 2
-- query_op3() check the exception
+- `test_example()` 測試保存地址功能，當 `op` 等於 1 時
+- `only_manager_can_change()` 測試只有管理者可以更改智能合約中的地址
+- `query()` 測試當 `op` 等於 2 時合約的工作
+- `query_op3()` 測試異常情況
 
-## FunC test structure under toncli
+## toncli 中的 FunC 測試結構
 
-Let me remind you that for each FunC test under toncli, you need to write two functions. The first one will determine the data (in terms of TON it would be more correct to say the state, but I hope that the data is a more understandable analogy), which we will send to the second for testing.
+提醒您，每個 FunC 測試在 toncli 中需要編寫兩個函數。第一個函數將確定數據（從 TON 的角度來看，更準確地說是狀態，但希望數據是一個更容易理解的類比），這些數據將發送給第二個函數進行測試。
 
-Each test function must specify a method_id. Method_id test functions should be started from 0.
+每個測試函數必須指定一個 `method_id`。`method_id` 測試函數應從 0 開始。
 
+### 資料函數
 
-##### Data function
+資料函數不接受任何參數，但必須返回：
+- 函數選擇器 - 測試合約中被調用函數的 ID；
+- 元組 - 我們將傳遞給執行測試的函數的值；
+- c4 cell - 控制寄存器 c4 中的“永久數據”；
+- c7 元組 - 控制寄存器 c7 中的“臨時數據”；
+- gas 限制整數 - gas 限制（要了解 gas 的概念，我建議先閱讀[以太坊](https://ethereum.org/en/developers/docs/gas/)的相關資料）；
 
-The data function takes no arguments, but must return:
-- function selector - id of the called function in the tested contract;
-- tuple - (stack) values ​​that we will pass to the function that performs tests;
-- c4 cell - "permanent data" in the control register c4;
-- c7 tuple - "temporary data" in the control register c7;
-- gas limit integer - gas limit (to understand the concept of gas, I advise you to first read about it in [Ethereum](https://ethereum.org/en/developers/docs/gas/));
+> Gas 衡量執行網絡上某些操作所需的計算工作量。
 
-> Gas measures the amount of computational effort required to perform certain operations on the network
+有關寄存器 c4 和 c7 的更多信息請參見[這裡](https://ton-blockchain.github.io/docs/tvm.pdf) 的 1.3.1 節。
 
-More about registers c4 and c7 [here](https://ton-blockchain.github.io/docs/tvm.pdf) in 1.3.1
+### 測試函數
 
-##### Test function
+測試函數必須接受以下參數：
 
-The test function must take the following arguments:
+- 退出代碼 - 虛擬機的返回代碼，以便我們了解是否存在錯誤
+- c4 cell - 控制寄存器 c4 中的“永久數據”
+- 元組 - 我們從資料函數傳遞的值
+- c5 cell - 用於檢查傳出的訊息
+- gas - 使用的 gas
 
-- exit code - return code of the virtual machine, so we can understand the error or not
-- c4 cell - "permanent data" in control register c4
-- tuple - (stack) values ​​that we pass from the data function
-- c5 cell - to check outgoing messages
-- gas - the gas that was used
+[TVM 返回代碼](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes)
 
-[TVM return codes](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes)
+## 測試保存地址功能，當 `op` 等於 1
 
-## Test saving addresses with op = 1
+讓我們編寫第一個測試 `test_example()` 並分析其代碼。該測試將檢查合約是否保存了管理者的地址以及管理者傳遞給合約的地址。
 
-Let's write the first test `test_example()` and analyze its code. The test will check if the contract stores the address of the manager and the address that the manager passes to the contract.
+### 資料函數
 
-##### Data function
+讓我們從資料函數開始：
 
-Let's start with the data function:
+```func
+[int, tuple, cell, tuple, int] test_example_data() method_id(0) {
 
-	[int, tuple, cell, tuple, int] test_example_data() method_id(0) {
+	int function_selector = 0;
 
-		int function_selector = 0;
-
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-		slice message_body = begin_cell().store_uint(1, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
-
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(manager_address.begin_parse())
-				.store_uint(0, 2) ;; should be contract address
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
-
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-		cell data = begin_cell().store_slice(manager_address.begin_parse()).store_uint(0, 2).end_cell();
-
-		return [function_selector, stack, data, get_c7(), null()];
-	}
-
-## Let's analyze
-
-And so in the first test, we want to check the operation of the smart contract with `op` equal to 1.
-Accordingly, we will send a message with `op` equal to 1 from the contract manager and store some address in it. To do this, in the data function we need:
-
-- manager address `manager_address`
-- address to store in contract `stored_address`
-- message body with `op` equal to 1
-- the message itself, respectively `message`
-- manager address in c4 to check `data`
-
-Let's start parsing:
-
-`int function_selector = 0;`
-
-Since we are calling `recv_internal()` we are assigning the value 0, why 0? Fift (namely, in it we compile our FunC scripts) has predefined identifiers, namely:
-- `main` and `recv_internal` have id = 0
-- `recv_external` have id = -1
-- `run_ticktock` have id = -2
-
-Let's collect the two necessary addresses, let it be 1 and 3:
-
-		cell manager_address = begin_cell().
-			store_uint(1, 2).
-			store_uint(5, 9).
-			store_uint(1, 5).
-			end_cell();
-			
-		cell stored_address = begin_cell().
-			store_uint(1, 2)
-			.store_uint(5, 9)
-			.store_uint(3, 5)
-			.end_cell();
-
-We collect addresses in accordance with the [TL-B scheme](https://github.com/tonblockchain/ton/blob/master/crypto/block/block.tlb) , and specifically to line 100, where address descriptions begin. For example `manager_address`:
-
-`.store_uint(1, 2)` - 0x01 external address;
-
-`.store_uint(5, 9)` - len equal to 5;
-
-`.store_uint(1, 5)` - address will be 1;
-
-Now let's assemble the message body slice, it will contain:
-- 32-bit op `store_uint(1, 32)`
-- 64-bit query_id `store_uint(12345, 64)`
-- storage address `store_slice(stored_address.begin_parse())`
-
-Since we store a slice in the body, and we set the address with a cell, we will use
-`begin_parse()` ( converts the cell to a slice ).
-
-To assemble the message body, we will use:
-
-`begin_cell()` - will create a Builder for the future cell
-`end_cell()` - create a Cell (cell)
-
-It looks like this:
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
 
 	slice message_body = begin_cell().store_uint(1, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
 
-Now it remains to collect the message itself, but how to send a message to the address of the smart contract. To do this, we will use `addr_none`, since, in accordance with the [SENDRAWMSG documentation](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message), the current address of the smart contract will be automatically substituted for it. We get:
-
-    cell message = begin_cell()
-            .store_uint(0x6, 4)
-            .store_slice(sender_address.begin_parse()) 
-            .store_uint(0, 2) 
-            .store_grams(100)
-            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-            .store_slice(message_body)
-            .end_cell();
-
-Now let's collect the values that we will pass to the function that performs the tests, namely `int balance`, `int msg_value`, `cell in_msg_full`, `slice in_msg_body`:
+	cell message = begin_cell()
+			.store_uint(0x6, 4)
+			.store_slice(manager_address.begin_parse())
+			.store_uint(0, 2) ;; 應該是合約地址
+			.store_grams(100)
+			.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+			.store_slice(message_body)
+			.end_cell();
 
 	tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-We will also collect a cell for the register `c4`, put the address of the manager and `addr_none` there using the functions already familiar to us.
-
 	cell data = begin_cell().store_slice(manager_address.begin_parse()).store_uint(0, 2).end_cell();
 
-And of course return the required values.
-
 	return [function_selector, stack, data, get_c7(), null()];
+}
+```
 
-As you can see, in c7 we put the current state of c7 using `get_c7()` , and in gas limit integer we put `null()`.
+## 解析
 
-##### Test function
+在第一個測試中，我們要檢查智能合約在 `op` 等於 1 時的操作。相應地，我們將從合約管理者那裡發送一條 `op` 等於 1 的訊息並存儲一些地址。為此，在資料函數中我們需要：
 
-The code:
+- 管理者地址 `manager_address`
+- 要存儲在合約中的地址 `stored_address`
+- `op` 等於 1 的訊息正文
+- 相應的訊息 `message`
+- 用於檢查的 c4 中的管理者地址 `data`
 
-	_ test_example(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(1) {
-		throw_if(100, exit_code != 0);
-
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-		slice stored = data.begin_parse();
-		throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-		throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
-		stored.end_parse();
-	}
-
-## Parsing
-
-`throw_if(100, exit_code != 0);`
-
-We check the return code, the function will throw an exception if the return code is not zero.
-0 - standard return code from the successful execution of a smart contract.
-
-Next, we will collect two addresses, similar to what we collected in the data function, in order to compare them.
-
-	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-
-Now let's get something to compare with, we have a `data` cell, respectively, using `begin_parse` - we will convert the cell into a slice.
-
-	slice stored = data.begin_parse();
-
-	stored.end_parse();
-
-And at the end, we check after the subtraction whether the slice is empty. It's important to note that `end_parse()` throws an exception if the slice is not empty, which is handy for testing.
-
-We will read addresses from `stored` using `load_msg_addr()`. We will compare addresses using the `equal_slices` function, which we will take from the previous lesson.
-
-		slice stored = data.begin_parse();
-		throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-		throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
-		stored.end_parse();
-		
-## Testing that when op = 1, only the manager can change the address in the smart contract
-
-Let's write the `only_manager_can_change()` test and analyze its code.
-
-##### Data function
-
-Let's start with the data function:
-
-	[int, tuple, cell, tuple, int] only_manager_can_change_data() method_id(2) {
-		int function_selector = 0;
-
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-		slice message_body = begin_cell().store_uint(1, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
-
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(sender_address.begin_parse()) 
-				.store_uint(0, 2) 
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
-
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-		cell data = begin_cell().store_slice(manager_address.begin_parse()).store_uint(0, 2).end_cell();
-
-		return [function_selector, stack, data, get_c7(), null()];
-	}
-
-## Let's analyze
-
-As you can see, the code is almost the same as `test_example()`. Besides that:
-- added one more address `sender_address`
-- in the message, the address of the manager `manager_address` has changed to the address of the sender `sender_address`
-
-We will collect the sender's address, like all other addresses:
-
-	cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-
-And change the address of the manager `manager_address` in the messages to the sender address `sender_address`.
-
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(sender_address.begin_parse()) 
-				.store_uint(0, 2) 
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
-
-##### Test function
-
-The code:
-
-	_ only_manager_can_change(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(3) {
-		throw_if(100, exit_code == 0); 
-
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-		slice stored = data.begin_parse();
-		throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-		throw_if(102, stored~load_uint(2) != 0);
-		stored.end_parse();
-	}
-
-## Let's analyze
-
-Again, we check the return code, the function will throw an exception if the return code is not zero.
-
-`throw_if(100, exit_code != 0);`
-
-0 - standard return code from the successful execution of a smart contract.
-
-We collect the manager addresses `manager_address;` and the stored address `stored_address`, the same as in the data function to check.
-
-	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-Now let's get something to compare with, we have a `data` cell, respectively, using `begin_parse` - we will convert the cell into a slice.
-
-	slice stored = data.begin_parse();
-
-	stored.end_parse();
-
-And at the end, we check after the subtraction whether the slice is empty. It's important to note that `end_parse()` throws an exception if the slice is not empty, which is handy for testing.
-
-We will read addresses from `stored` using `load_msg_addr()`. We will compare addresses using the `equal_slices` function, which we will take from the previous lesson.
-
-	slice stored = data.begin_parse();
-	throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-
-	stored.end_parse();
-
-Additionally compare the stored address with `addr_none` using `~load_uint(2)`
-
-`load_uint` - Loads an n-bit unsigned integer from a slice
-
-We get:
-
-    slice stored = data.begin_parse();
-    throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-    throw_if(102, stored~load_uint(2) != 0);
-    stored.end_parse();
-	
-## Testing the operation of the smart contract with op = 2
-
-Let's write a `query()` test and analyze its code. With `op` = 2, we must send a message with a specific body.
-
-##### Data function
-
-Let's start with the data function:
-
-	[int, tuple, cell, tuple, int] query_data() method_id(4) {
-		int function_selector = 0;
-
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
-
-		slice message_body = begin_cell().store_uint(2, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
-
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(sender_address.begin_parse()) 
-				.store_uint(0, 2)
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
-
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-		cell data = begin_cell().store_slice(manager_address.begin_parse()).store_slice(stored_address.begin_parse()).end_cell();
-
-		return [function_selector, stack, data, get_c7(), null()];
-	}
-
-## Let's analyze
-
-The data function is not much different from the previous ones in this lesson.
+讓我們開始解析：
 
 `int function_selector = 0;`
 
-Checking the predefined function number `recv_internal`.
+由於我們調用了 `recv_internal()`，因此我們分配值 0，為什麼是 0？Fift（即我們在其中編譯 FunC 腳本）有預定義的標識符，即：
+- `main` 和 `recv_internal` 的 id = 0
+- `recv_external` 的 id = -1
+- `run_ticktock` 的 id = -2
 
-We collect three addresses:
+讓我們收集兩個必要的地址，設為 1 和 3：
 
-- manager address `manager_address`
-- sender address `sender_address`
-- address to store in contract `stored_address`
+```func
+	cell manager_address = begin_cell().
+		store_uint(1, 2).
+		store_uint(5, 9).
+		store_uint(1, 5).
+		end_cell();
+		
+	cell stored_address = begin_cell().
+		store_uint(1, 2)
+		.store_uint(5, 9)
+		.store_uint(3, 5)
+		.end_cell();
+```
 
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+我們按照 [TL-B 方案](https://github.com/tonblockchain/ton/blob/master/crypto/block/block.tlb) 收集地址，具體在第 100 行開始描述地址。例如 `manager_address`：
 
-Now let's assemble the message body slice (IMPORTANT: now `op`=2), it will contain:
-- 32-bit op `store_uint(2, 32)`
-- 64-bit query_id `store_uint(12345, 64)`
-- storage address `store_slice(stored_address.begin_parse())`
+`.store_uint(1, 2)` - 0x01 外部地址；
 
-Since we store a slice in the body, and we set the address with a cell, we will use
-`begin_parse()` ( converts the cell to a slice ).
+`.store_uint(5, 9)` - len 等於 5；
 
-To assemble the message body, we will use:
+`.store_uint(1, 5)` - 地址為 1；
 
-`begin_cell()` - will create a Builder for the future cell
-`end_cell()` - create a Cell (cell)
+現在讓我們組裝訊息正文的 slice，它將包含：
+- 32 位的 op `store_uint(1, 32)`
+- 64 位的 query_id `store_uint(12345, 64)`
+- 存儲地址 `store_slice(stored_address.begin_parse())`
 
-It looks like this:
+由於我們在正文中存儲了 slice，並且我們使用 cell 設置地址，因此我們將使用 `begin_parse()`（將 cell 轉換為 slice）。
+
+要組裝訊息正文，我們將使用：
+
+`begin_cell()` - 創建一個 Builder 用於未來的 cell
+`end_cell()` - 創建一個 cell
+
+它看起來像這樣：
+
+```func
+slice message_body = begin_cell().store_uint(1, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
+```
+
+現在只需組裝訊息本身，但如何將訊息發送到智能合約的地址。為此，我們將使用 `addr_none`，因為根據 [SENDRAWMSG 文件](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message)，“addr_none” 將自動替換為當前的智能合約地址。我們得到：
+
+```func
+cell message = begin_cell()
+        .store_uint(0x6, 4)
+        .store_slice(sender_address.begin_parse()) 
+        .store_uint(0, 2) 
+        .store_grams(100)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_slice(message_body)
+        .end_cell();
+```
+
+現在讓我們收集將傳遞給執行測試的函數的值，即 `int balance`, `int msg_value`, `cell in_msg_full`, `slice in_msg_body`：
+
+```func
+tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+```
+
+我們還將為寄存器 `c4` 收集一個 cell，使用我們已經熟悉的函數將管理者地址和 `addr_none` 放入其中。
+
+```func
+cell data = begin_cell().store_slice(manager_address.begin_parse()).store_uint(0, 2).end_cell();
+```
+
+當然，返回所需的值。
+
+```func
+return [function_selector, stack, data, get_c7(), null()];
+```
+
+如您所見，在 c7 中，我們使用 `get_c7()` 放置了 c7 的當前狀態，而在 gas 限制整數中，我們放置了 `null()`。
+
+### 測試函數
+
+代碼：
+
+```func
+_ test_example(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(1) {
+	throw_if(100, exit_code != 0);
+
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+
+	slice stored = data.begin_parse();
+	throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+	throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
+	stored.end_parse();
+}
+```
+
+## 解析
+
+`throw_if(100, exit_code != 0);`
+
+我們檢查返回代碼，如果返回代碼不為零，該函數將拋出異常。0 - 智能合約成功執行的標準返回代碼。
+
+接下來，我們將收集兩個地址，類似於我們在資料函數中收集的地址，以便進行比較。
+
+```func
+cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+```
+
+現在讓我們獲取一些東西來進行比較，我們有一個 `data` cell，因此使用 `begin_parse` - 我們將 cell 轉換為 slice。
+
+```func
+slice stored = data.begin_parse();
+
+stored.end_parse();
+```
+
+最後，我們在讀取後檢查 slice 是否為空。重要的是要注意，`end_parse()` 如果 slice 不為空將拋出異常，這在測試中非常方便。
+
+我們將使用 `load_msg_addr()` 從 `stored` 中讀取地址。使用我們從上一課中取來的 `equal_slices` 函數進行地址比較。
+
+```func
+slice stored = data.begin_parse();
+throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
+stored.end_parse();
+```
+
+## 測試當 `op` 等於 1 時，只有管理者可以更改智能合約中的地址
+
+讓我們編寫 `only_manager_can_change()` 測試並分析其代碼。
+
+### 資料函數
+
+讓我們從資料函數開始：
+
+```func
+[int, tuple, cell, tuple, int] only_manager_can_change_data() method_id(2) {
+	int function_selector = 0;
+
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+
+	slice message_body = begin_cell().store_uint(1, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
+
+	cell message = begin_cell()
+			.store_uint(0x6, 4)
+			.store_slice(sender_address.begin_parse()) 
+			.store_uint(0, 2) 
+			.store_grams(100)
+			.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+			.store_slice(message_body)
+			.end_cell();
+
+	tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+
+	cell data = begin_cell().store_slice(manager_address.begin_parse()).store_uint(0, 2).end_cell();
+
+	return [function_selector, stack, data, get_c7(), null()];
+}
+```
+
+## 解析
+
+如您所見，代碼幾乎與 `test_example()` 相同。除了：
+- 添加了一個額外的地址 `sender_address`
+- 在訊息中，管理者地址 `manager_address` 更改為發送者地址 `sender_address`
+
+我們將收集發送者地址，如同其他所有地址一樣：
+
+```func
+cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+```
+
+並將訊息中的管理者地址 `manager_address` 更改為發送者地址 `sender_address`。
+
+```func
+cell message = begin_cell()
+        .store_uint(0x6, 4)
+        .store_slice(sender_address.begin_parse()) 
+        .store_uint(0, 2) 
+        .store_grams(100)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_slice(message_body)
+        .end_cell();
+```
+
+### 測試函數
+
+代碼：
+
+```func
+_ only_manager_can_change(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(3) {
+	throw_if(100, exit_code == 0); 
+
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+
+	slice stored = data.begin_parse();
+	throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+	throw_if(102, stored~load_uint(2) != 0);
+	stored.end_parse();
+}
+```
+
+## 解析
+
+再次，我們檢查返回代碼，如果返回代碼不為零，該函數將拋出異常。
+
+`throw_if(100, exit_code != 0);`
+
+0 - 智能合約成功執行的標準返回代碼。
+
+我們收集管理者地址 `manager_address;` 和存儲地址 `stored_address`，與資料函數中的相同，以便進行檢查。
+
+```func
+cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+```
+
+現在讓我們獲取一些東西來進行比較，我們有一個 `data` cell，因此使用 `begin_parse` - 我們將 cell 轉換為 slice。
+
+```func
+slice stored = data.begin_parse();
+
+stored.end_parse();
+```
+
+最後，我們在讀取後檢查 slice 是否為空。重要的是要注意，`end_parse()` 如果 slice 不為空將拋出異常，這在測試中非常方便。
+
+我們將使用 `load_msg_addr()` 從 `stored` 中讀取地址。使用我們從上一課中取來的 `equal_slices` 函數進行地址比較。
+
+```func
+slice stored = data.begin_parse();
+throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+
+stored.end_parse();
+```
+
+另外使用 `~load_uint(2)` 將存儲地址與 `addr_none` 進行比較
+
+`load_uint` - 從 slice 加載 n 位無符號整數
+
+我們得到：
+
+```func
+slice stored = data.begin_parse();
+throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+throw_if(102, stored~load_uint(2) != 0);
+stored.end_parse();
+```
+
+## 測試智能合約在 `op` 等於 2 時的操作
+
+讓我們編寫 `query()` 測試並分析其代碼。當 `op` 等於 2 時，我們必須發送一條具有特定正文的訊息。
+
+### 資料函數
+
+讓我們從資料函數開始：
+
+```func
+[int, tuple, cell, tuple, int] query_data() method_id(4) {
+	int function_selector = 0;
+
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
 
 	slice message_body = begin_cell().store_uint(2, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
 
-It's time for a message:
+	cell message = begin_cell()
+			.store_uint(0x6, 4)
+			.store_slice(sender_address.begin_parse()) 
+			.store_uint(0, 2)
+			.store_grams(100)
+			.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+			.store_slice(message_body)
+			.end_cell();
 
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(sender_address.begin_parse()) 
-				.store_uint(0, 2)
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
-				
-The sender is `sender_address`, the recipient is the address of the contract, thanks to sending `addr_none`. The current smart contract address is automatically substituted instead.
-
-Now let's collect the values ​​that we will pass to the function that performs the tests, namely `int balance`, `int msg_value`, `cell in_msg_full`, `slice in_msg_body`:
-
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-
-We will also collect a cell for the register `c4`, put the address of the manager and the address for storage there using the functions already familiar to us.
+	tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
 	cell data = begin_cell().store_slice(manager_address.begin_parse()).store_slice(stored_address.begin_parse()).end_cell();
 
-And of course return the required values.
-
 	return [function_selector, stack, data, get_c7(), null()];
+}
+```
 
-As you can see, in c7 we put the current state of c7 using `get_c7()` , and in gas limit integer we put `null()`.
+## 解析
 
-##### Test function
+資料函數與本課中之前的資料函數相差不大。
 
-The code:
+`int function_selector = 0;`
 
-	_ query(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(5) {
-		throw_if(100, exit_code != 0); 
+檢查預定義的函數編號 `recv_internal`。
 
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+我們收集三個地址：
 
-		slice stored = data.begin_parse();
-		throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
-		throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
-		stored.end_parse();
+- 管理者地址 `manager_address`
+- 發送者地址 `sender_address`
+- 要存儲在合約中的地址 `stored_address`
 
-		slice all_actions = actions.begin_parse();
-		all_actions~load_ref();
-		slice msg = all_actions~load_ref().begin_parse();
+```func
+cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+```
 
-		throw_if(103, msg~load_uint(6) != 0x10);
+現在讓我們組裝訊息正文的 slice（重要：現在 `op` 等於 2），它將包含：
+- 32 位的 op `store_uint(2, 32)`
+- 64 位的 query_id `store_uint(12345, 64)`
+- 存儲地址 `store_slice(stored_address.begin_parse())`
 
-		slice send_to_address = msg~load_msg_addr();
+由於我們在正文中存儲了 slice，並且我們使用 cell 設置地址，因此我們將使用 `begin_parse()`（將 cell 轉換為 slice）。
 
-		throw_if(104, ~ equal_slices(sender_address.begin_parse(), send_to_address));
-		throw_if(105, msg~load_grams() != 0);
-		throw_if(106, msg~load_uint(1 + 4 + 4 + 64 + 32 + 1 + 1) != 0);
+要組裝訊息正文，我們將使用：
 
-		throw_if(107, msg~load_uint(32) != 3);
-		throw_if(108, msg~load_uint(64) != 12345);
-		throw_if(109, ~ equal_slices(manager_address.begin_parse(), msg~load_msg_addr()));
-		throw_if(110, ~ equal_slices(stored_address.begin_parse(), msg~load_msg_addr()));
+`begin_cell()` - 創建一個 Builder 用於未來的 cell
+`end_cell()` - 創建一個 cell
 
-		msg.end_parse();
-	}
+它看起來像這樣：
 
-## Let's analyze
+```func
+slice message_body = begin_cell().store_uint(2, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
+```
 
-So the beginning is similar to what we have already parsed, three addresses (`manager_address`,`sender_address`,`stored_address)`) identical to those that we collected in the comparison data function and the comparison itself using `equal_slices()`.
+現在是訊息的時間：
+
+```func
+cell message = begin_cell()
+		.store_uint(0x6, 4)
+		.store_slice(sender_address.begin_parse()) 
+		.store_uint(0, 2)
+		.store_grams(100)
+		.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+		.store_slice(message_body)
+		.end_cell();
+```
+發送者是 `sender_address`，接收者是合約的地址，通過發送 `addr_none`。當前的智能合約地址將自動替換。
+
+現在讓我們收集將傳遞給執行測試的函數的值，即 `int balance`, `int msg_value`, `cell in_msg_full`, `slice in_msg_body`：
+
+```func
+tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+```
+
+我們還將為寄存器 `c4` 收集一個 cell，使用我們已經熟悉的函數將管理者地址和存儲地址放入其中。
+
+```func
+cell data = begin_cell().store_slice(manager_address.begin_parse()).store_slice(stored_address.begin_parse()).end_cell();
+```
+
+當然，返回所需的值。
+
+```func
+return [function_selector, stack, data, get_c7(), null()];
+```
+
+如您所見，在 c7 中，我們使用 `get_c7()` 放置了 c7 的當前狀態，而在 gas 限制整數中，我們放置了 `null()`。
+
+### 測試函數
+
+代碼：
+
+```func
+_ query(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(5) {
+	throw_if(100, exit_code != 0); 
 
 	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
 	cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
@@ -480,131 +491,194 @@ So the beginning is similar to what we have already parsed, three addresses (`ma
 	throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
 	stored.end_parse();
 
-Then we move on to the message. Outgoing messages are written to register c5. Let's get them from the `actions` cell to the `stored` slice.
-
 	slice all_actions = actions.begin_parse();
-
-Now let's remember how data is stored in c5 in accordance with [documentation](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=result-of-tvm-execution).
-
-A list of two cell references is stored there, two cell references with the last action in the list and a cell reference with the previous action, respectively. (At the end of the tutorial, there will be code that shows how to parse `actions` in full, I hope this helps)
-
-Therefore, first we "unload" the first link and take the second one, where our message is:
-
 	all_actions~load_ref();
 	slice msg = all_actions~load_ref().begin_parse();
 
-The cell is immediately loaded into the `msg` slice. Let's check the flags:
-
 	throw_if(103, msg~load_uint(6) != 0x10);
-
-After loading the sender's address from the message with `load_msg_addr()` - which loads the only prefix from the slice that is a valid MsgAddress - check if they are equal to the address we specified earlier. Don't forget to convert the cell to a slice.
 
 	slice send_to_address = msg~load_msg_addr();
 
 	throw_if(104, ~ equal_slices(sender_address.begin_parse(), send_to_address));
-
-Using `load_grams()` and `load_uint()` from the [standard library](https://ton-blockchain.github.io/docs/#/func/stdlib?id=load_grams) check if the number of Ton in the message is not equal to 0 and other service fields that can be viewed in the [message schema](https://ton-blockchain.github.io/docs/#/smart-contracts/messages) by reading them from the message.
-
 	throw_if(105, msg~load_grams() != 0);
-    throw_if(106, msg~load_uint(1 + 4 + 4 + 64 + 32 + 1 + 1) != 0);
-
-We start checking the body of the message, starting with `op` and `query_id`:
+	throw_if(106, msg~load_uint(1 + 4 + 4 + 64 + 32 + 1 + 1) != 0);
 
 	throw_if(107, msg~load_uint(32) != 3);
 	throw_if(108, msg~load_uint(64) != 12345);
-
-Next, take their address message bodies and compare them using `equal_slices`. Since the function will check for equality to test for inequality, we use the unary operator ` ~` , which is not bitwise.
-
 	throw_if(109, ~ equal_slices(manager_address.begin_parse(), msg~load_msg_addr()));
 	throw_if(110, ~ equal_slices(stored_address.begin_parse(), msg~load_msg_addr()));
 
-At the very end, after reading, we check whether the slice is empty, both of the entire message and the message body from which we took the value. It's important to note that `end_parse()` throws an exception if the slice is not empty, which is very handy in tests.
-
 	msg.end_parse();
-	
-## Testing the operation of the smart contract in case of an exception
+}
+```
 
-Let's write a `query_op3` test and analyze its code. By assignment - when the smart contract receives any other message, it should throw an exception.
+## 解析
 
-##### Data function
+開頭類似於我們已經解析的內容，三個地址 (`manager_address`,`sender_address`,`stored_address`) 與我們在資料函數中收集的相同，使用 `equal_slices()` 進行比較。
 
-Let's start with the data function:
+```func
+cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
 
-	[int, tuple, cell, tuple, int] query_op3_data() method_id(6) {
-		int function_selector = 0;
+slice stored = data.begin_parse();
+throw_if(101, ~ equal_slices(stored~load_msg_addr(), manager_address.begin_parse()));
+throw_if(102, ~ equal_slices(stored~load_msg_addr(), stored_address.begin_parse()));
+stored.end_parse();
+```
 
-		cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
-		cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
-		cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
+然後我們移動到訊息。傳出的訊息寫入寄存器 c5。我們從 `actions` cell 中獲取它們到 `stored` slice 中。
 
-		slice message_body = begin_cell().store_uint(3, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
+```func
+slice all_actions = actions.begin_parse();
+```
 
-		cell message = begin_cell()
-				.store_uint(0x6, 4)
-				.store_slice(sender_address.begin_parse()) 
-				.store_uint(0, 2) 
-				.store_grams(100)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
+現在讓我們回憶一下根據 [文件](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=result-of-tvm-execution) 在 c5 中存儲數據的方式。
 
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+那裡存儲了一個包含兩個 cell 參考的列表，分別是最後一個操作中的兩個 cell 參考和前一個操作中的一個 cell 參考。（在教學的結尾，有一段代碼顯示如何完全解析 `actions`，希望這對您有所幫助）
 
-		cell data = begin_cell().store_slice(manager_address.begin_parse()).store_slice(stored_address.begin_parse()).end_cell();
+因此，首先我們“卸載”第一個鏈接並取第二個，其中包含我們的訊息：
 
-		return [function_selector, stack, data, get_c7(), null()];
-	}
+```func
+all_actions~load_ref();
+slice msg = all_actions~load_ref().begin_parse();
+```
 
-## Let's analyze
+cell 立即加載到 `msg` slice 中。讓我們檢查標誌：
 
-This data function is almost completely equivalent to the one we wrote in the last paragraph, with the exception of one detail - this is the value of `op` in the body of the message so that we can check what happens if `op` is not equal to 2 or 1.
+```func
+throw_if(103, msg~load_uint(6) != 0x10);
+```
+
+從訊息中加載發送者地址使用 `load_msg_addr()` - 從 slice 加載唯一前綴，即有效的 MsgAddress，並檢查它們是否等於我們之前指定的地址。不要忘記將 cell 轉換為 slice。
+
+```func
+slice send_to_address = msg~load_msg_addr();
+
+throw_if(104, ~ equal_slices(sender_address.begin_parse(), send_to_address));
+```
+
+使用 `load_grams()` 和 `load_uint()` 從 [標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib?id=load_grams) 檢查訊息中的 TON 數量是否不等於 0 以及其他可以在 [訊息模式](https://ton-blockchain.github.io/docs/#/smart-contracts/messages) 中查看的服務字段，從訊息中讀取它們。
+
+```func
+throw_if(105, msg~load_grams() != 0);
+throw_if(106, msg~load_uint(1 + 4 + 4 + 64 + 32 + 1 + 1) != 0);
+```
+
+我們開始檢查訊息正文，從 `op` 和 `query_id` 開始：
+
+```func
+throw_if(107, msg~load_uint(32) != 3);
+throw_if(108, msg~load_uint(64) != 12345);
+```
+
+接下來，取它們的地址訊息正文並使用 `equal_slices` 進行比較。由於該函數將檢查相等性，為測試不相等性，我們使用一元運算符 ` ~`，它是位運算符非。
+
+```func
+throw_if(109, ~ equal_slices(manager_address.begin_parse(), msg~load_msg_addr()));
+throw_if(110, ~ equal_slices(stored_address.begin_parse(), msg~load_msg_addr()));
+```
+
+最後，在讀取後，我們檢查 slice 是否為空，無論是整個訊息還是我們從中取值的訊息正文。重要的是要注意，`end_parse()` 如果 slice 不為空將拋出異常，這在測試中非常方便。
+
+```func
+msg.end_parse();
+```
+
+## 測試智能合約在異常情況下的操作
+
+讓我們編寫 `query_op3` 測試並分析其代碼。根據分配——當智能合約接收到任何其他訊息時，應拋出異常。
+
+### 資料函數
+
+讓我們從資料函數開始：
+
+```func
+[int, tuple, cell, tuple, int] query_op3_data() method_id(6) {
+	int function_selector = 0;
+
+	cell manager_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(1, 5).end_cell();
+	cell sender_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(2, 5).end_cell();
+	cell stored_address = begin_cell().store_uint(1, 2).store_uint(5, 9).store_uint(3, 5).end_cell();
 
 	slice message_body = begin_cell().store_uint(3, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
 
-##### Test function
+	cell message = begin_cell()
+			.store_uint(0x6, 4)
+			.store_slice(sender_address.begin_parse()) 
+			.store_uint(0, 2) 
+			.store_grams(100)
+			.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+			.store_slice(message_body)
+			.end_cell();
 
-The code:
+	tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-	_ query_op3(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(7) {
-		throw_if(100, exit_code == 0);
-	}
+	cell data = begin_cell().store_slice(manager_address.begin_parse()).store_slice(stored_address.begin_parse()).end_cell();
 
-## Let's analyze
-We check that if the return code is 0, i.e. completed without errors, throw an exception.
+	return [function_selector, stack, data, get_c7(), null()];
+}
+```
 
+## 解析
+
+這個資料函數幾乎完全等同於我們在上一段中編寫的函數，除了 `op` 值一個細節，以便我們可以檢查 `op` 是否不等於 2 或 1 時會發生什麼。
+
+```func
+slice message_body = begin_cell().store_uint(3, 32).store_uint(12345, 64).store_slice(stored_address.begin_parse()).end_cell().begin_parse();
+```
+
+### 測試函數
+
+代碼：
+
+```func
+_ query_op3(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(7) {
 	throw_if(100, exit_code == 0);
+}
+```
 
-And that is all.
+## 解析
 
-## Conclusion
+我們檢查，如果返回代碼為 0，即成功完成，則拋出異常。
 
-I wanted to say a special thank you to those who donate to support the project, it is very motivating and helps to release lessons faster. If you want to help the project (release lessons faster, translate it all into English, etc.), at the bottom of the [main page] (https://github.com/romanovichim/TonFunClessons_ru), there are addresses for donations.
+```func
+throw_if(100, exit_code == 0);
+```
 
-##### Addition
+就這麼簡單。
 
-An example of a "analyzing actions" function:
+## 結論
 
-	(int, cell) extract_single_message(cell actions) impure inline method_id {
-		;; ---------------- Parse actions list
-		;; prev:^(OutList n)
-		;; #0ec3c86d
-		;; mode:(## 8)
-		;; out_msg:^(MessageRelaxed Any)
-		;; = OutList (n + 1);
-		slice cs = actions.begin_parse();
-		throw_unless(1010, cs.slice_refs() == 2);
-		
-		cell prev_actions = cs~load_ref();
-		throw_unless(1011, prev_actions.cell_empty?());
-		
-		int action_type = cs~load_uint(32);
-		throw_unless(1013, action_type == 0x0ec3c86d);
-		
-		int msg_mode = cs~load_uint(8);
-		throw_unless(1015, msg_mode == 64); 
-		
-		cell msg = cs~load_ref();
-		throw_unless(1017, cs.slice_empty?());
-		
-		return (msg_mode, msg);
-	}
+特別感謝那些捐款支持本項目的人，這非常有激勵作用，並有助於更快地發布課程。如果您想幫助這個項目（更快地發布課程，將所有內容翻譯成英文等），在[主頁底部](https://github.com/romanovichim/TonFunClessons_ru)有捐款地址。
+
+### 附加內容
+
+一個“解析動作”函數的例子：
+
+```func
+(int, cell) extract_single_message(cell actions) impure inline method_id {
+	;; ---------------- Parse actions list
+	;; prev:^(OutList n)
+	;; #0ec3c86d
+	;; mode:(## 8)
+	;; out_msg:^(MessageRelaxed Any)
+	;; = OutList (n + 1);
+	slice cs = actions.begin_parse();
+	throw_unless(1010, cs.slice_refs() == 2);
+	
+	cell prev_actions = cs~load_ref();
+	throw_unless(1011, prev_actions.cell_empty?());
+	
+	int action_type = cs~load_uint(32);
+	throw_unless(1013, action_type == 0x0ec3c86d);
+	
+	int msg_mode = cs~load_uint(8);
+	throw_unless(1015, msg_mode == 64); 
+	
+	cell msg = cs~load_ref();
+	throw_unless(1017, cs.slice_empty?());
+	
+	return (msg_mode, msg);
+}
+```

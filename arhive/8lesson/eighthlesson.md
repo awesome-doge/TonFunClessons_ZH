@@ -1,19 +1,19 @@
-# Lesson 8 FunC tests for smart contract with Hashmap
-## Introduction
+# 第八課：針對 Hashmap 的智能合約進行 FunC 測試
+## 簡介
 
-In this tutorial, we will write tests for the smart contract created in the seventh lesson on The Open Network testnet in FUNC language and execute them using [toncli](https://github.com/disintar/toncli).
+在這個教程中，我們將為第七課中在 The Open Network 測試網上使用 FUNC 語言創建的智能合約編寫測試，並使用 [toncli](https://github.com/disintar/toncli) 來執行它們。
 
-## Requirements
+## 需求
 
-To complete this tutorial, you need to install the [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) command line interface  and complete the previous tutorials.
+要完成這個教程，你需要安裝 [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) 命令行界面並完成前面的教程。
 
-## Important
+## 重要提示
 
-Written below describes the old version of the tests. New toncli tests, currently available for dev version of func/fift, instruction [here](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests_new.md), lesson on new tests [ here](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/11lesson/11lesson.md). The release of new tests does not mean that the lessons on the old ones are meaningless - they convey the logic well, so success in passing the lesson. Also note that old tests can be used with the `--old` flag when using `toncli run_tests`
+以下內容描述的是舊版測試。目前的 toncli 測試適用於開發版本的 func/fift，具體說明請見 [這裡](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests_new.md)，新版測試的教程請見 [這裡](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/11lesson/11lesson.md)。新版測試的發布並不意味著舊版測試沒有意義——它們很好地傳達了邏輯，因此通過這一課程仍然是有價值的。需要注意的是，使用 `toncli run_tests` 時可以使用 `--old` 標誌來運行舊版測試。
 
-## Tests for smart contract with Hashmap
+## Hashmap 智能合約的測試
 
-For the smart contract from lesson 7, we will write the following tests:
+針對第七課中的智能合約，我們將編寫以下測試：
 - test_example()
 - get_stored_value()
 - get_not_stored_value()
@@ -26,528 +26,581 @@ For the smart contract from lesson 7, we will write the following tests:
 - get_not_stored_value2()
 - remove_outdated3()
 
-> Important, there are a lot of tests in this lesson, and we will not analyze each one in detail, but we will look at the logic, dwelling only on the most important nuances. Therefore, I advise you to go through the previous lessons before going through this one.
+> 重要提示：這一課中有很多測試，我們不會詳細解析每一個，而是重點關注最重要的細節。因此，我建議你在進行這一課之前先完成前面的課程。
 
-## FunC test structure under toncli
+## 在 toncli 下的 FunC 測試結構
 
-Let me remind you that for each FunC test under toncli we will write two functions. The first one will determine the data (in terms of TON it would be more correct to say the state, but I hope that the data is a more understandable analogy), which we will send to the second for testing.
+在 toncli 下，每個 FunC 測試都需要編寫兩個函數。第一個函數將確定數據（在 TON 中更準確地說是狀態），我們將把這些數據傳送給第二個函數進行測試。
 
-Each test function must specify a method_id. Method_id test functions should be started from 0.
+每個測試函數都必須指定一個 method_id。測試函數的 method_id 應從 0 開始。
 
-##### Data function
+##### 數據函數
 
-The data function takes no arguments, but must return:
-- function selector - id of the called function in the tested contract;
-- tuple - (stack) values ​​that we will pass to the function that performs tests;
-- c4 cell - "permanent data" in the control register c4;
-- c7 tuple - "temporary data" in the control register c7;
-- gas limit integer - gas limit (to understand the concept of gas, I advise you to first read about it in [Ethereum](https://ethereum.org/en/developers/docs/gas/));
+數據函數不接受參數，但必須返回：
+- 函數選擇器 - 被測合約中調用函數的 ID；
+- tuple - 我們將傳遞給執行測試的函數的值；
+- c4 cell - 控制寄存器 c4 中的“永久數據”；
+- c7 tuple - 控制寄存器 c7 中的“臨時數據”；
+- gas limit integer - gas 限制（要了解 gas 的概念，我建議你先閱讀 [Ethereum](https://ethereum.org/en/developers/docs/gas/) 的相關內容）；
 
-> Gas measures the amount of computational effort required to perform certain operations on the network
+> Gas 衡量在網絡上執行某些操作所需的計算努力量
 
-More about registers c4 and c7 [here](https://ton-blockchain.github.io/docs/tvm.pdf) in 1.3.1
+有關 c4 和 c7 寄存器的更多信息請見 [這裡](https://ton-blockchain.github.io/docs/tvm.pdf) 第 1.3.1 節
 
-##### Test function
+##### 測試函數
 
-The test function must take the following arguments:
+測試函數必須接受以下參數：
 
-- exit code - return code of the virtual machine, so we can understand the error or not
-- c4 cell - "permanent data" in control register c4
-- tuple - (stack) values ​​that we pass from the data function
-- c5 cell - to check outgoing messages
-- gas - the gas that was used
+- exit code - 虛擬機的返回代碼，這樣我們可以了解是否有錯誤
+- c4 cell - 控制寄存器 c4 中的“永久數據”
+- tuple - 我們從數據函數傳遞的值
+- c5 cell - 用於檢查傳出消息
+- gas - 使用的 gas
 
-[TVM return codes](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes)
+[TVM 返回代碼](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_exit_codes)
 
-## Test the contract triggering and just put the data for the next tests.
+## 測試合約觸發並為下一次測試準備數據
 
-Let's write the first test test_example and analyze its code.
+讓我們編寫第一個測試 `test_example` 並解析其代碼。
 
-##### Data function
+##### 數據函數
 
-Let's start with the data function:
+我們從數據函數開始：
 
+```func
+[int, tuple, cell, tuple, int] test_example_data() method_id(0) {
+	int function_selector = 0;
 
-	[int, tuple, cell, tuple, int] test_example_data() method_id(0) {
-		int function_selector = 0;
+	slice message_body = begin_cell()
+	  .store_uint(1, 32) ;; add key
+	  .store_uint(12345, 64) ;; query id
+	  .store_uint(787788, 256) ;; key
+	  .store_uint(1000, 64) ;; valid until
+	  .store_uint(12345, 128) ;; 128-bit value
+	  .end_cell().begin_parse();
 
-		slice message_body = begin_cell()
-		  .store_uint(1, 32) ;; add key
-		  .store_uint(12345, 64) ;; query id
-		  .store_uint(787788, 256) ;; key
-		  .store_uint(1000, 64) ;; valid until
-		  .store_uint(12345, 128) ;; 128-bit value
-		  .end_cell().begin_parse();
+	cell message = begin_cell()
+			.store_uint(0x18, 6)
+			.store_uint(0, 2) 
+			.store_grams(0)
+			.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+			.store_slice(message_body)
+			.end_cell();
 
-		cell message = begin_cell()
-				.store_uint(0x18, 6)
-				.store_uint(0, 2) 
-				.store_grams(0)
-				.store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-				.store_slice(message_body)
-				.end_cell();
+	tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-		tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+	cell data = begin_cell().end_cell();
 
-		cell data = begin_cell().end_cell();
+	return [function_selector, stack, data, get_c7_now(100), null()];
+}
+```
 
-		return [function_selector, stack, data, get_c7_now(100), null()];
-	}
-
-
-## Let's analyze
+## 解析
 
 `int function_selector = 0;`
 
-Since we are calling `recv_internal()` we are assigning the value 0, why 0? Fift (namely, in it we compile our FunC scripts) has predefined identifiers, namely:
-- `main` and `recv_internal` have id = 0
-- `recv_external` have id = -1
-- `run_ticktock` have id = -2
+由於我們調用的是 `recv_internal()`，因此我們將值設置為 0，為什麼是 0？Fift（即我們在其中編譯 FunC 腳本）有預定義的標識符，即：
+- `main` 和 `recv_internal` 的 ID 為 0
+- `recv_external` 的 ID 為 -1
+- `run_ticktock` 的 ID 為 -2
 
-Next, we collect the body of the message in accordance with the task of [lesson seven](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/7lesson/seventhlesson.md).
+接下來，我們根據 [第七課的任務](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/7lesson/seventhlesson.md) 收集消息正文。
 
-		slice message_body = begin_cell()
-		  .store_uint(1, 32) ;; op
-		  .store_uint(12345, 64) ;; query id
-		  .store_uint(787788, 256) ;; key
-		  .store_uint(1000, 64) ;; valid until
-		  .store_uint(12345, 128) ;; 128-bit value
-		  .end_cell().begin_parse();
+```func
+slice message_body = begin_cell()
+  .store_uint(1, 32) ;; op
+  .store_uint(12345, 64) ;; query id
+  .store_uint(787788, 256) ;; key
+  .store_uint(1000, 64) ;; valid until
+  .store_uint(12345, 128) ;; 128-bit value
+  .end_cell().begin_parse();
+```
 
-Comments described each value for convenience. Let's also collect the message cell:
+註釋為每個值進行了描述。接下來我們收集消息 cell：
 
-    cell message = begin_cell()
-            .store_uint(0x18, 6)
-            .store_uint(0, 2)
-            .store_grams(0)
-            .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-            .store_slice(message_body)
-            .end_cell();
-			
-The message must be sent to the address of the smart contract. For this we will use `addr_none` (i.e. `.store_uint(0, 2)`), because according to [SENDRAWMSG documentation](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message ) the current address of the smart contract will be automatically substituted for it.
+```func
+cell message = begin_cell()
+        .store_uint(0x18, 6)
+        .store_uint(0, 2)
+        .store_grams(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_slice(message_body)
+        .end_cell();
+```
 
-Further, everything is standard for the data function:
+消息必須發送到智能合約的地址。為此，我們將使用 `addr_none`（即 `.store_uint(0, 2)`），因為根據 [SENDRAWMSG 文檔](https://ton-blockchain.github.io/docs/#/func/stdlib?id=send_raw_message)，智能合約的當前地址將自動替換為它。
 
-    tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+接下來是數據函數的標準部分：
 
-    cell data = begin_cell().end_cell();
+```func
+tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-    return [function_selector, stack, data, get_c7_now(100), null()];
+cell data = begin_cell().end_cell();
 
-Except for one thing c7 tuple - "temporary data" in c7 control register, before we didn't care what was in c7 and we just used `get_c7()`. i.e. just the current state of c7. But in this tutorial, we will have to work with c7 data and therefore we will have to write a helper function for tests.
+return [function_selector, stack, data, get_c7_now(100), null()];
+```
 
-##Help function
+除了 `c7` tuple - "臨時數據" 在 `c7` 控制寄存器中，之前我們並不關心 `c7` 中的內容，只是使用 `get_c7()`，即當前狀態的 `c7`。但在這個教程中，我們需要操作 `c7` 中的數據，因此我們需要為測試編寫一個輔助函數。
 
-The code:
+## 輔助函數
 
-	tuple get_c7_now(int now) inline method_id {
-		return unsafe_tuple([unsafe_tuple([
-			0x076ef1ea,           ;; magic
-			0,                    ;; actions
-			0,                    ;; msgs_sent
-			now,                ;; unixtime
-			1,                    ;; block_lt
-			1,                    ;; trans_lt
-			239,                  ;; randseed
-			unsafe_tuple([1000000000, null()]),  ;; balance_remaining
-			null(),               ;; myself
-			get_config()          ;; global_config
-		])]);
-	}
+代碼如下：
 
-So in this smart contract, we need to manipulate the time in the smart contract, we will do this by changing the data in the `c7` register. To understand what tuple format we should "put" into `c7`, let's refer to the documentation, namely [TON description paragraph 4.4.10](https://ton-blockchain.github.io/docs/tblkch.pdf).
+```func
+tuple get_c7_now(int now) inline method_id {
+	return unsafe_tuple([unsafe_tuple([
+		0x076ef1ea,           ;; magic
+		0,                    ;; actions
+		0,                    ;; msgs_sent
+		now,                  ;; unixtime
+		1,                    ;; block_lt
+		1,                    ;; trans_lt
+		239,                  ;; randseed
+		unsafe_tuple([1000000000, null()]),  ;; balance_remaining
+		null(),               ;; myself
+		get_config()          ;; global_config
+	])]);
+}
+```
 
-We will not dwell on each parameter in detail; I tried to convey the essence briefly with comments in the code.
+在這個智能合約中，我們需要操縱智能合約中的時間，我們將通過更改 `c7` 寄存器中的數據來實現這一點。要了解應該將哪種 tuple 格式“放入” `c7`，我們參考文檔，即 [TON 描述第 4.4.10 節](https://ton-blockchain.github.io/docs/tblkch.pdf)。
 
-##### Test function
+我們不會詳細討論每個參數；我試圖用代碼中的註釋簡要傳達要點。
 
-The code:
+##### 測試函數
 
-	_ test_example(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(1) {
-		throw_if(100, exit_code != 0);
-	}
+代碼如下：
 
-## Let's analyze
+```func
+_ test_example(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(1) {
+	throw_if(100, exit_code != 0);
+}
+```
+
+## 解析
 
 `throw_if(100, exit_code != 0);`
 
-We check the return code, the function will throw an exception if the return code is not zero.
-0 - standard return code from the successful execution of a smart contract.
+我們檢查返回代碼，如果返回代碼不為零，則函數將拋出異常。
+0 - 成功執行智能合約的標準返回代碼。
 
-And that's it, the first test just puts the data so that we can check the operation of the smart contract in the next tests.
+就是這樣，第一個測試只是放置數據，以便我們可以在後續測試中檢查智能合約的運行。
 
+## 測試獲取存儲值
 
-## Test getting the stored value
+讓我們編寫一個 `get_stored_value` 測試，該測試將取出我們在 `test_example` 中放置的值並解析其代碼。
 
-Let's write a `get_stored_value` test that will take the values we put in `test_example` and parse its code.
+##### 數據函數
 
-##### Data function
+我們從數據函數開始：
 
-Let's start with the data function:
-
-	[int, tuple, cell, tuple, int] get_stored_value_data() method_id(2) {
-		int function_selector = 127977;
-
-		int key = 787788;
-
-		tuple stack = unsafe_tuple([key]);
-
-		return [function_selector, stack, get_prev_c4(), get_c7(), null()];
-	}
-
-## Let's analyze
-
+```func
+[int, tuple, cell, tuple, int] get_stored_value_data() method_id(2) {
 	int function_selector = 127977;
-
-To understand what id the GET function has, you need to go to the compiled smart contract and see what id is assigned to the function. Let's go to the build folder and open contract.fif and find the line with `get_key`
-
-	127977 DECLMETHOD get_key
-
-It is necessary to pass the key to the `get_key` function, let's pass the key that we set in the previous test, namely `787788`
 
 	int key = 787788;
 
 	tuple stack = unsafe_tuple([key]);
 
-It remains only to return the data:
-
 	return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+}
+```
 
-As you can see, in c7 we put the current state of c7 using `get_c7()` , and in gas limit integer we put `null()`. Then the situation with the `c4` register is interesting, we need to put a cell from the previous test, this cannot be done using the standard FunC library, BUT in `toncli` this moment is thought out:
-In [description of toncli tests](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests.md), there are get_prev_c4 / get_prev_c5 functions that allow you to get c4/c5 cells from previous tests.
+## 解析
 
-##### Test function
+```func
+int function_selector = 127977;
+```
 
-The code:
+要了解 GET 函數的 ID 是什麼，需要進入編譯的智能合約並查看分配給該函數的 ID。進入 build 文件夾，打開 `contract.fif`，找到帶有 `get_key` 的行
 
-	_ get_stored_value(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(3) {
-		throw_if(100, exit_code != 0);
+```fift
+127977 DECLMETHOD get_key
+```
 
-		var valid_until = first(stack);
-		throw_if(102, valid_until != 1000);
-		var value = second(stack);
-		throw_if(101, value~load_uint(128) != 12345);
-	}
+有必要將鍵傳遞給 `get_key` 函數，傳遞我們在上一個測試中設置的鍵，即 `787788`
 
-## Let's analyze
+```func
+int key = 787788;
+
+tuple stack = unsafe_tuple([key]);
+```
+
+最後返回數據：
+
+```func
+return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+```
+
+如你所見，我們使用 `get_c7()` 將當前狀態放入 `c7` 中，並在 gas limit integer 中放置 `null()`。然後有趣的是 `c4` 寄存器的情況，我們需要放置上一個測試中的 cell，這無法使用標準的 FunC 庫完成，但在 `toncli` 中這一點已經考慮到了：
+在 [toncli 測試描述](https://github.com/disintar/toncli/blob/master/docs/advanced/func_tests.md) 中，有 `get_prev_c4` / `get_prev_c5` 函數允許你從先前的測試中獲取 c4/c5 cell。
+
+##### 測試函數
+
+代碼如下：
+
+```func
+_ get_stored_value(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(3) {
+	throw_if(100, exit_code != 0);
+
+	var valid_until = first(stack);
+	throw_if(102, valid_until != 1000);
+	var value = second(stack);
+	throw_if(101, value~load_uint(128) != 12345);
+}
+```
+
+## 解析
 
 `throw_if(100, exit_code != 0);`
 
-We check the return code, the function will throw an exception if the return code is not zero.
-0 - standard return code from the successful execution of a smart contract.
+我們檢查返回代碼，如果返回代碼不為零，則函數將拋出異常。
+0 - 成功執行智能合約的標準返回代碼。
 
-Let me remind you that the `tuple` variable is the (stack) values ​​that we pass from the data function. We will parse it using [data type primitives](https://ton-blockchain.github.io/docs/#/func/stdlib?id=other-tuple-primitives) `tuple` - `first` and `second`.
+提醒你一下，`tuple` 變量是我們從數據函數傳遞的（堆棧）值。我們將使用 [數據類型原語](https://ton-blockchain.github.io/docs/#/func/stdlib?id=other-tuple-primitives) `tuple` - `first` 和 `second` 來解析它。
 
-    var valid_until = first(stack);
-    throw_if(102, valid_until != 1000);
-    var value = second(stack);
-    throw_if(101, value~load_uint(128) != 12345);
+```func
+var valid_until = first(stack);
+throw_if(102, valid_until != 1000);
+var value = second(stack);
+throw_if(101, value~load_uint(128) != 12345);
+```
 
-We check the value of `valid_until` and the `128-bit value` we passed. Throw exceptions if the values ​​are different.
+我們檢查 `valid_until` 的值和我們傳遞的 `128-bit value`。如果值不同則拋出異常。
 
-## Test for an exception if there is no entry for the received key
+## 測試在接收到的鍵沒有條目的情況下引發異常
 
-Let's write a `get_not_stored_value()` test and analyze its code.
+讓我們編寫 `get_not_stored_value()` 測試並解析其代碼。
 
-##### Data function
+##### 數據函數
 
-Let's start with the data function:
+我們從數據函數開始：
 
-	[int, tuple, cell, tuple, int] get_not_stored_value_data() method_id(4) {
-		int function_selector = 127977;
+```func
+[int, tuple, cell, tuple, int] get_not_stored_value_data() method_id(4) {
+	int function_selector = 127977;
 
-		int key = 787789; 
+	int key = 787789; 
 
-		tuple stack = unsafe_tuple([key]);
+	tuple stack = unsafe_tuple([key]);
 
-		return [function_selector, stack, get_prev_c4(), get_c7(), null()];
-	}
+	return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+}
+```
 
-## Let's analyze
+## 解析
 
-The data function differs only in the key, we take the key, which is not in the contract store.
+數據函數的唯一不同是鍵，我們取一個不在合約存儲中的鍵。
 
-	int key = 787789;
+```func
+int key = 787789;
+```
 
-##### Test function
+##### 測試函數
 
-The code:
+代碼如下：
 
-	_ get_not_stored_value(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(5) {
-		throw_if(100, exit_code == 0);
-	}
-	
-## Let's analyze
-
-We check that if the return code is 0, i.e. completed without errors, throw an exception.
-
+```func
+_ get_not_stored_value(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(5) {
 	throw_if(100, exit_code == 0);
+}
+```
 
-And that is all.
+## 解析
 
-## Check that op = 2 throws an exception if the message contains something other than op and query_id
+我們檢查返回代碼是否為 0，即如果成功完成，則拋出異常。
 
-Let's write a bad_query() test and analyze its code.
+```func
+throw_if(100, exit_code == 0);
+```
 
-##### Data function
+就是這樣。
 
-Let's start with the data function:
+## 檢查 op = 2 如果消息包含除了 op 和 query_id 之外的內容是否引發異常
 
-	[int, tuple, cell, tuple, int] bad_query_data() method_id(8) {
-	   int function_selector = 0;
+讓我們編寫 `bad_query()` 測試並解析其代碼。
 
-	   slice message_body = begin_cell()
-		 .store_uint(2, 32) ;; remove old
-		 .store_uint(12345, 64) ;; query id
-		 .store_uint(12345, 128) ;; 128-bit value
-		 .end_cell().begin_parse();
+##### 數據函數
 
-	   cell message = begin_cell()
-			   .store_uint(0x18, 6)
-			   .store_uint(0, 2) ;; should be contract address
-			   .store_grams(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_slice(message_body)
-			   .end_cell();
+我們從數據函數開始：
 
-	   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+```func
+[int, tuple, cell, tuple, int] bad_query_data() method_id(8) {
+   int function_selector = 0;
 
-	   return [function_selector, stack, get_prev_c4(), get_c7(), null()];
-	}
+   slice message_body = begin_cell()
+	 .store_uint(2, 32) ;; remove old
+	 .store_uint(12345, 64) ;; query id
+	 .store_uint(12345, 128) ;; 128-bit value
+	 .end_cell().begin_parse();
 
-## Let's analyze
+   cell message = begin_cell()
+		   .store_uint(0x18, 6)
+		   .store_uint(0, 2) ;; should be contract address
+		   .store_grams(0)
+		   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+		   .store_slice(message_body)
+		   .end_cell();
 
-The main thing in this data function is the body of the message, in addition to op and query_id, garbage has been added to it in the form store_uint(12345, 128) . You need this to check the following code from the contract:
+   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-	if (op == 2) {
-		in_msg_body.end_parse();
-	}
+   return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+}
+```
 
-Thus, getting here the contract will throw an exception.
+## 解析
 
-##### Test function
+這個數據函數的主要部分是消息正文，除了 `op` 和 `query_id` 之外，還添加了垃圾數據 `store_uint(12345, 128)`。你需要這樣做來檢查合約中的以下代碼：
 
-The code:
+```func
+if (op == 2) {
+	in_msg_body.end_parse();
+}
+```
 
-	_ bad_query(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(9) {
-		throw_if(100, exit_code == 0);
-	}
+因此，進入這裡時合約將拋出異常。
 
-## Let's analyze
+##### 測試函數
 
-As you can see, we are just checking that the contract will throw an exception.
+代碼如下：
 
-## Test deleting data, but with now < all keys
+```func
+_ bad_query(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(9) {
+	throw_if(100, exit_code == 0);
+}
+```
 
-Let's write the remove_outdated() test and analyze its code.
+## 解析
 
-##### Data function
+如你所見，我們只是檢查合約是否會拋出異常。
 
-Let's start with the data function:
+## 測試刪除數據，但現在 < 所有鍵
 
-	[int, tuple, cell, tuple, int] remove_outdated_data() method_id(10) {
-	   int function_selector = 0;
+讓我們編寫 `remove_outdated()` 測試並解析其代碼。
 
-	   slice message_body = begin_cell()
-		 .store_uint(2, 32) ;; remove old
-		 .store_uint(12345, 64) ;; query id
-		 .end_cell().begin_parse();
+##### 數據函數
 
-	   cell message = begin_cell()
-			   .store_uint(0x18, 6)
-			   .store_uint(0, 2)
-			   .store_grams(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_slice(message_body)
-			   .end_cell();
+我們從數據函數開始：
 
-	   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+```func
+[int, tuple, cell, tuple, int] remove_outdated_data() method_id(10) {
+   int function_selector = 0;
 
-	   return [function_selector, stack, get_prev_c4(), get_c7_now(1000), null()];
-	}
+   slice message_body = begin_cell()
+	 .store_uint(2, 32) ;; remove old
+	 .store_uint(12345, 64) ;; query id
+	 .end_cell().begin_parse();
 
-## Let's analyze
+   cell message = begin_cell()
+		   .store_uint(0x18, 6)
+		   .store_uint(0, 2)
+		   .store_grams(0)
+		   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+		   .store_slice(message_body)
+		   .end_cell();
+
+   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+
+   return [function_selector, stack, get_prev_c4(), get_c7_now(1000), null()];
+}
+```
+
+## 解析
 
 `int function_selector = 0;`
 
-Since we are calling `recv_internal()` we are assigning the value 0, why 0? Fift (namely, in it we compile our FunC scripts) has predefined identifiers, namely:
-- `main` and `recv_internal` have id = 0
-- `recv_external` have id = -1
-- `run_ticktock` have id = -2
+由於我們調用的是 `recv_internal()`，因此我們將值設置為 0，為什麼是 0？Fift（即我們在其中編譯 FunC 腳本）有預定義的標識符，即：
+- `main` 和 `recv_internal` 的 ID 為 0
+- `recv_external` 的 ID 為 -1
+- `run_ticktock` 的 ID 為 -2
 
-Next, we collect the body of the message in accordance with the task [of the seventh lesson](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/7lesson/seventhlesson.md) with `op` = 2 .
+接下來，我們根據 [第七課的任務](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/7lesson/seventhlesson.md) 收集消息正文。
 
-	   slice message_body = begin_cell()
-		 .store_uint(2, 32) ;; remove old
-		 .store_uint(12345, 64) ;; query id
-		 .end_cell().begin_parse();
+```func
+slice message_body = begin_cell()
+ .store_uint(2, 32) ;; remove old
+ .store_uint(12345, 64) ;; query id
+ .end_cell().begin_parse();
+```
 
-Let's also collect the message cell:
+我們還收集消息 cell：
 
-	   cell message = begin_cell()
-			   .store_uint(0x18, 6)
-			   .store_uint(0, 2)
-			   .store_grams(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_slice(message_body)
-			   .end_cell();
+```func
+cell message = begin_cell()
+	   .store_uint(0x18, 6)
+	   .store_uint(0, 2)
+	   .store_grams(0)
+	   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+	   .store_slice(message_body)
+	   .end_cell();
+```
 
-Further, everything is standard for the data function:
+接下來是數據函數的標準部分：
 
-	   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+```func
+tuple stack = unsafe_tuple([12345, 100, message, message_body]);
 
-	   return [function_selector, stack, get_prev_c4(), get_c7_now(1000), null()];
+return [function_selector, stack, get_prev_c4(), get_c7_now(1000), null()];
+```
 
-Also, let's put 1000 in c7 to check how deletion works with now < `valid_until` in the contract.
+我們還將 `1000` 放入 `c7` 以檢查在合約中 `now` < `valid_until` 時的刪除情況。
 
-##### Test function
+##### 測試函數
 
-The code:
+代碼如下：
 
-	_ remove_outdated(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(11) {
-		throw_if(100, exit_code != 0);
-	}
+```func
+_ remove_outdated(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(11) {
+	throw_if(100, exit_code != 0);
+}
+```
 
-## Let's 
+## 解析
 
-With now < `valid_until` the contract should just work correctly, so:
+當 `now` < `valid_until` 時，合約應該正常運行，因此：
 
 `throw_if(100, exit_code != 0);`
 
-We check the return code, the function will throw an exception if the return code is not zero.
-0 - standard return code from the successful execution of a smart contract.
+我們檢查返回代碼，如果返回代碼不為零，則函數將拋出異常。
+0 - 成功執行智能合約的標準返回代碼。
 
-Whether the value was deleted or not will be checked in the next test.
+是否刪除值將在下一個測試中檢查。
 
-## Test that the values were not deleted when now < all keys
+## 測試現在 < 所有鍵時未刪除的值
 
-In this `get_stored_value_after_remove()` test, everything is absolutely identical to the test:
-`get_stored_value()` , so I will not stop, just give the code:
+在這個 `get_stored_value_after_remove()` 測試中，所有內容與 `get_stored_value()` 測試完全相同，因此我不再詳述，只給出代碼：
 
-##### get_stored_value_after_remove() code 
+##### `get_stored_value_after_remove()` 代碼 
 
+```func
 [int, tuple, cell, tuple, int] get_stored_value_after_remove_data() method_id(12) {
-    int function_selector = 127977;
+	int function_selector = 127977;
 
-    int key = 787788;
+	int key = 787788;
 
-    tuple stack = unsafe_tuple([key]);
+	tuple stack = unsafe_tuple([key]);
 
-    return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+	return [function_selector, stack, get_prev_c4(), get_c7(), null()];
 }
 
 
 _ get_stored_value_after_remove(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(13) {
-    throw_if(100, exit_code != 0);
+	throw_if(100, exit_code != 0);
 
-    var valid_until = first(stack);
-    throw_if(102, valid_until != 1000);
-    var value = second(stack);
-    throw_if(101, value~load_uint(128) != 12345);
+	var valid_until = first(stack);
+	throw_if(102, valid_until != 1000);
+	var value = second(stack);
+	throw_if(101, value~load_uint(128) != 12345);
+}
+```
+
+## 測試刪除過期數據
+
+現在讓我們通過設置 `get_c7_now(now)` 為 `1001` 來刪除過期數據。這樣做：測試函數 `remove_outdated2()` 使用 `op` = 2 和 `now` = 1001 將刪除過期數據，而 `get_stored_value_after_remove2()` 將檢查鍵 `787788` 的數據是否已刪除並且 `get_key()` 函數將返回異常。結果如下：
+
+```func
+[int, tuple, cell, tuple, int] remove_outdated2_data() method_id(14) {
+   int function_selector = 0;
+
+   slice message_body = begin_cell()
+	 .store_uint(2, 32) ;; remove old
+	 .store_uint(12345, 64) ;; query id
+	 .end_cell().begin_parse();
+
+   cell message = begin_cell()
+		   .store_uint(0x18, 6)
+		   .store_uint(0, 2) ;; should be contract address
+		   .store_grams(0)
+		   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+		   .store_slice(message_body)
+		   .end_cell();
+
+   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+
+   return [function_selector, stack, get_prev_c4(), get_c7_now(1001), null()];
 }
 
-## Testing deletion of obsolete data
 
-Now let's remove obsolete data by setting get_c7_now(now) to 1001. We do it like this: the test function `remove_outdated2()` with `op` = 2 and now = 1001 will remove obsolete , and `get_stored_value_after_remove2()` will check that the data for the key `787788` has been deleted and the `get_key()` function will return an exception. We get:
-
-	[int, tuple, cell, tuple, int] remove_outdated2_data() method_id(14) {
-	   int function_selector = 0;
-
-	   slice message_body = begin_cell()
-		 .store_uint(2, 32) ;; remove old
-		 .store_uint(12345, 64) ;; query id
-		 .end_cell().begin_parse();
-
-	   cell message = begin_cell()
-			   .store_uint(0x18, 6)
-			   .store_uint(0, 2) ;; should be contract address
-			   .store_grams(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_slice(message_body)
-			   .end_cell();
-
-	   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-	   return [function_selector, stack, get_prev_c4(), get_c7_now(1001), null()];
-	}
+_ remove_outdated2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(15) {
+	throw_if(100, exit_code != 0);
+}
 
 
-	_ remove_outdated2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(15) {
-		throw_if(100, exit_code != 0);
-	}
+[int, tuple, cell, tuple, int] get_stored_value_after_remove2_data() method_id(16) {
+	int function_selector = 127977;
+
+	int key = 787788;
+
+	tuple stack = unsafe_tuple([key]);
+
+	return [function_selector, stack, get_prev_c4(), get_c7(), null()];
+}
 
 
-	[int, tuple, cell, tuple, int] get_stored_value_after_remove2_data() method_id(16) {
-		int function_selector = 127977;
+_ get_stored_value_after_remove2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(17) {
+	throw_if(100, exit_code == 0);
+}
+```
 
-		int key = 787788;
+## 測試另一個鍵
 
-		tuple stack = unsafe_tuple([key]);
+刪除過期數據後，我們將嘗試使用另一個鍵獲取數據，`get_key` 函數應該也會拋出異常。
 
-		return [function_selector, stack, get_prev_c4(), get_c7(), null()];
-	}
+```func
+[int, tuple, cell, tuple, int] get_not_stored_value2_data() method_id(18) {
+	;; Funtion to run (recv_internal)
+	int function_selector = 127977;
 
+	int key = 787789; ;; random key
 
-	_ get_stored_value_after_remove2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(17) {
-		throw_if(100, exit_code == 0);
-	}
+	;; int balance, int msg_value, cell in_msg_full, slice in_msg_body
+	tuple stack = unsafe_tuple([key]);
 
-## Test another key
+	cell data = begin_cell().end_cell();
 
-After we have removed the obsolete data, we will try to get data with a different key, the `get_key` function should also throw an exception.
-
-	[int, tuple, cell, tuple, int] get_not_stored_value2_data() method_id(18) {
-		;; Funtion to run (recv_internal)
-		int function_selector = 127977;
-
-		int key = 787789; ;; random key
-
-		;; int balance, int msg_value, cell in_msg_full, slice in_msg_body
-		tuple stack = unsafe_tuple([key]);
-
-		cell data = begin_cell().end_cell();
-
-		return [function_selector, stack, data, get_c7(), null()];
-	}
+	return [function_selector, stack, data, get_c7(), null()];
+}
 
 
-	_ get_not_stored_value2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(19) {
-		throw_if(100, exit_code == 0);
-	}
+_ get_not_stored_value2(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(19) {
+	throw_if(100, exit_code == 0);
+}
+```
 
-As you can see, we use the key 787789, which was not there, and check that the function throws an exception.
+如你所見，我們使用鍵 `787789`，該鍵不存在，並檢查函數是否會拋出異常。
 
-## Let's run the deletion again when the data has already been deleted
+## 再次運行刪除已刪除的數據
 
-And finally, the last test, once again run the deletion with now < all keys
+最後一個測試，當數據已刪除時再次運行刪除操作
+
+```func
+[int, tuple, cell, tuple, int] remove_outdated3_data() method_id(20) {
+   int function_selector = 0;
+
+   slice message_body = begin_cell()
+	 .store_uint(2, 32) ;; remove old
+	 .store_uint(12345, 64) ;; query id
+	 .end_cell().begin_parse();
+
+   cell message = begin_cell()
+		   .store_uint(0x18, 6)
+		   .store_uint(0, 2) 
+		   .store_grams(0)
+		   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+		   .store_slice(message_body)
+		   .end_cell();
+
+   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
+
+   return [function_selector, stack, begin_cell().end_cell(), get_c7_now(1000), null()];
+}
 
 
-	[int, tuple, cell, tuple, int] remove_outdated3_data() method_id(20) {
-	   int function_selector = 0;
+_ remove_outdated3(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(21) {
+	throw_if(100, exit_code != 0);
+}
+```
 
-	   slice message_body = begin_cell()
-		 .store_uint(2, 32) ;; remove old
-		 .store_uint(12345, 64) ;; query id
-		 .end_cell().begin_parse();
+## 結論
 
-	   cell message = begin_cell()
-			   .store_uint(0x18, 6)
-			   .store_uint(0, 2) 
-			   .store_grams(0)
-			   .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
-			   .store_slice(message_body)
-			   .end_cell();
-
-	   tuple stack = unsafe_tuple([12345, 100, message, message_body]);
-
-	   return [function_selector, stack, begin_cell().end_cell(), get_c7_now(1000), null()];
-	}
-
-
-	_ remove_outdated3(int exit_code, cell data, tuple stack, cell actions, int gas) method_id(21) {
-		throw_if(100, exit_code != 0);
-	}
-	
-## Conclusion
-
-I wanted to say a special thank you to those who donate to support the project, it is very motivating and helps to release lessons faster. If you want to help the project (release lessons faster, translate it all into English, etc.), at the bottom of the [main page] (https://github.com/romanovichim/TonFunClessons_ru), there are addresses for donations.
+特別感謝那些捐款支持這個項目的人，這給了我們很大的動力，幫助我們更快地發布課程。如果你想幫助這個項目（更快地發布課程、將其翻譯成英文等），在 [主頁底部](https://github.com/romanovichim/TonFunClessons_ru) 有捐款地址。

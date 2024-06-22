@@ -1,374 +1,415 @@
-# Lesson 7 Hashmap or Dictionary
-## Introduction
+# 第七課：Hashmap 或字典
 
-In this lesson, we will write a smart contract that can perform various operations with a Hashmap - a dictionary, in the test network The Open Network in the FUNC language, deploy it to the test network using [toncli](https://github.com/disintar/toncli), and we will test it in the next lesson.
+## 簡介
 
-## Requirements
+在這一課中，我們將編寫一個智能合約，該合約可以在 The Open Network 測試網絡中使用 FUNC 語言進行各種 Hashmap（字典）操作，並使用 [toncli](https://github.com/disintar/toncli) 將其部署到測試網絡中，並在下一課中進行測試。
 
-To complete this tutorial, you need to install the [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) command line interface .
+## 需求
 
-And also be able to create/deploy a project using toncli, you can learn how to do it in [the first lesson](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/1lesson/firstlesson.md).
+要完成這個教程，你需要安裝 [toncli](https://github.com/disintar/toncli/blob/master/INSTALLATION.md) 命令行界面。並且能夠使用 toncli 創建/部署項目，你可以在[第一課](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/1lesson/firstlesson.md)中學習如何操作。
 
-## Hashmap or dictionaries (dictionaries)
+## Hashmap 或字典
 
-Hashmap is a data structure represented by a tree. Hashmap - maps keys to values ​​of arbitrary type, so that quick lookup and modification is possible. More details in [clause 3.3](https://ton-blockchain.github.io/docs/tvm.pdf). In FunC, hashmaps are [represented by a cell](https://ton-blockchain.github.io/docs/#/func/stdlib?id=dictionaries-primitives).
+Hashmap 是一種由樹表示的數據結構。Hashmap 將鍵映射到任意類型的值，以便可以快速查找和修改。詳細信息見 [3.3 節](https://ton-blockchain.github.io/docs/tvm.pdf)。在 FunC 中，hashmaps 是 [由一個 cell 表示的](https://ton-blockchain.github.io/docs/#/func/stdlib?id=dictionaries-primitives)。
 
-## Smart contract
+## 智能合約
 
-The task of the smart contract will be to add and remove data and key / value of the Hashmap storage in particular the following functionality **:
-- When a smart contract receives a message with the structure described below, the contract must add a new record of the key/value type to its data:
-- 32-bit unsigned `op` equal to 1
-    - 64-bit unsigned `query_id`
-    - 256-bit unsigned key
-    - 64-bit `valid_until` unixtime
-    - remaining slice value
-- The message about deleting obsolete data has the following structure:
-     - 32-bit unsigned `op` equal to 2
-     - 64-bit unsigned `query_id`
-Upon receiving such a message, the contract must remove all obsolete entries from its data (with `valid_until` < now()). And also check that there is no extra data in the message except for 32-bit unsigned `op` and 64-bit unsigned `query_id`
-- For all other internal messages, an error should be thrown
-- The Get method `get_key` must be implemented which accepts a 256-bit unsigned key and must return the integer `valid_until` and the value of the data slice for that key. If there is no entry for this key, an error should be thrown.
-- Important! we assume that the contract starts with an empty store.
+智能合約的任務是添加和刪除數據以及 Hashmap 存儲的鍵/值，具體功能如下：
+- 當智能合約收到結構如下的消息時，合約必須將一個新鍵/值記錄添加到其數據中：
+  - 32 位無符號 `op` 等於 1
+  - 64 位無符號 `query_id`
+  - 256 位無符號鍵
+  - 64 位 `valid_until` Unix 時間
+  - 剩餘的 slice 值
+- 刪除過期數據的消息結構如下：
+  - 32 位無符號 `op` 等於 2
+  - 64 位無符號 `query_id`
+  接收到這樣的消息時，合約必須從其數據中刪除所有過期的記錄（`valid_until` < `now()`）。並檢查消息中除了 32 位無符號 `op` 和 64 位無符號 `query_id` 外沒有其他數據。
+- 對於所有其他內部消息，應拋出錯誤。
+- 必須實現 Get 方法 `get_key`，該方法接受一個 256 位無符號鍵，必須返回該鍵的 `valid_until` 和數據 slice 值。如果沒有該鍵的記錄，應拋出錯誤。
+- 重要！假設合約從空存儲開始。
 
-** I decided to take ideas for smart contracts from the [FunC contest1](https://github.com/ton-blockchain/func-contest1) tasks, as they are very well suited for getting acquainted with the development of smart contracts for TON.
+**我決定從 [FunC contest1](https://github.com/ton-blockchain/func-contest1) 任務中借鑒智能合約的想法，因為它們非常適合熟悉 TON 智能合約的開發。
 
+## 外部方法
 
-## External method
+### 外部方法結構
 
-## External method structure
+為了讓我們的代理接收消息，我們將使用外部方法 `recv_internal()`。
 
-In order for our proxy to receive messages, we will use the external method `recv_internal()`
+```func
+() recv_internal()  {
 
-    () recv_internal()  {
+}
+```
 
-    }
+### 外部方法參數
+
+根據 [TON 虛擬機 - TVM](https://ton-blockchain.github.io/docs/tvm.pdf) 的文檔，當 TON 鏈中的一個賬戶發生事件時，它會觸發一個交易。每個交易包含最多 5 個階段。詳細信息見 [此處](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=transactions-and-phases)。
+
+我們關心的是 **計算階段**。具體來說，是初始化期間在堆棧上的內容。對於正常的消息觸發交易，堆棧的初始狀態如下：
+
+5 個元素：
+- 智能合約餘額（nanoTons）
+- 傳入消息餘額（nanotons）
+- 包含傳入消息的 cell
+- 傳入消息正文，slice 類型
+- 方法選擇器（對於 recv_internal 為 0）
+
+結果，我們得到以下代碼：
+
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body)  {
+
+}
+```
+
+### 從消息正文中獲取數據
+
+根據條件，根據 `op`，合約應以不同方式工作。因此，我們從消息正文中提取 `op` 和 `query_id`。
+
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+	int op = in_msg_body~load_uint(32);
+	int query_id = in_msg_body~load_uint(64);
+}
+```
+
+你可以在 [第五課](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/5lesson/fifthlesson.md) 中了解更多關於 `op` 和 `query_id` 的信息。
+
+我們還使用條件運算符圍繞 `op` 構建邏輯。
+
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+	int op = in_msg_body~load_uint(32);
+	int query_id = in_msg_body~load_uint(64);
 	
-##### External method arguments
-According to the documentation of the [TON virtual machine - TVM](https://ton-blockchain.github.io/docs/tvm.pdf), when an event occurs on an account in one of the TON chains, it triggers a transaction.
+	if (op == 1) {
+		;; 這裡將添加新值
+	}
+	if (op == 2) {
+		;; 這裡將刪除
+	}
+}
+```
 
-Each transaction consists of up to 5 stages. Read more [here](https://ton-blockchain.github.io/docs/#/smart-contracts/tvm_overview?id=transactions-and-phases).
+根據任務，所有其他內部消息應拋出錯誤，因此讓我們在條件語句後添加異常。
 
-We are interested in **Compute phase**. And to be more specific, what is "on the stack" during initialization. For normal message-triggered transactions, the initial state of the stack looks like this:
-
-5 elements:
-- Smart contract balance (in nanoTons)
-- Incoming message balance (in nanotones)
-- Cell with incoming message
-- Incoming message body, slice type
-- Function selector (for recv_internal it is 0)
-
-As a result, we get the following code:
-
-    () recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body)  {
-
-    }
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+	int op = in_msg_body~load_uint(32);
+	int query_id = in_msg_body~load_uint(64);
 	
-##### Get data from message body
+	if (op == 1) {
+		;; 這裡將添加新值
+	}
+	if (op == 2) {
+		;; 這裡將刪除
+	}
+	throw(1001);
+}
+```
 
-According to the condition, depending on the `op`, the contract should work differently. Therefore, we subtract `op` and `query_id` from the body of the message.
+現在我們需要從 `c4` 寄存器中獲取數據。為了從 c4 中獲取數據，我們需要 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib) 中的兩個函數。
 
-	() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-		int op = in_msg_body~load_uint(32);
-		int query_id = in_msg_body~load_uint(64);
-	 }
-	 
-You can read more about `op` and `query_id` in [lesson 5](https://github.com/romanovichim/TonFunClessons_Eng/blob/main/5lesson/fifthlesson.md).
+即：
+`get_data` - 從 c4 寄存器中獲取 cell。
+`begin_parse` - 將 cell 轉換為 slice
 
-Also using conditional operators we build logic around `op` .
+將此值傳遞給 slice ds
 
-	() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-		int op = in_msg_body~load_uint(32);
-		int query_id = in_msg_body~load_uint(64);
-		
-		if (op == 1) {
-		;; здесь будем добавлять новые значения
-    	}
-		if (op == 2) {
-		;; здесь удалять
-    	}
-	 }
+```func
+cell data = get_data();
+slice ds = data.begin_parse();
+```
 
-According to the task, all other internal messages should throw an error, so let's add an exception after the conditional statements.
+重要的是要考慮到任務中的註釋，即合約將從空的 `c4` 開始。因此，為了從 `c4` 中獲取這些變量，我們使用條件運算符，語法如下：
 
-	() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-		int op = in_msg_body~load_uint(32);
-		int query_id = in_msg_body~load_uint(64);
-		
-		if (op == 1) {
-		;; здесь будем добавлять новые значения
-    	}
-		if (op == 2) {
-		;; здесь удалять
-    	}
-		throw (1001);
-	 }
+```func
+<condition> ? <consequence> : <alternative>
+```
 
-Now we need to take the data from the `c4` register. In order to "get" the data from c4, we need two functions from the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib) .
+它將看起來像這樣：
 
-Namely:
-`get_data` - Gets a cell from the c4 register.
-`begin_parse` - converts a cell into a slice
+```func
+cell dic = ds.slice_bits() == 0 ? new_dict() : data;
+```
 
-Pass this value to slice ds
+這裡使用的 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib?id=dictionaries-primitives) 函數有：
 
+- `slice_bits()` - 返回 slice 中的數據位數，檢查 c4 是否為空
+- `new_dict()` - 創建一個空字典，實際上是一個 null 值。null() 的一種特殊情況。
+
+合約的整體框架如下：
+
+```func
+() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
+	int op = in_msg_body~load_uint(32);
+	int query_id = in_msg_body~load_uint(64);
+	
 	cell data = get_data();
 	slice ds = data.begin_parse();
-
-it is important to take into account the note in the task that the contract will start with an empty `c4`. Therefore, to take these variables from `c4` we use the conditional operator, the syntax is as follows:
-
-	<condition> ? <consequence> : <alternative>
-
-It will look like this:
-
 	cell dic = ds.slice_bits() == 0 ? new_dict() : data;
-
-The following functions from the FunC standard library are used here:
-
-- `slice_bits()` - returns the number of data bits in the slice, check if c4 is empty or not
-- `new_dict() ` - creates an empty dictionary, which is actually a null value. A special case of null().
-
-The overall skeleton of the contract is as follows:
-
-	() recv_internal(int balance, int msg_value, cell in_msg_full, slice in_msg_body) {
-		int op = in_msg_body~load_uint(32);
-		int query_id = in_msg_body~load_uint(64);
-		
-		cell data = get_data();
-		slice ds = data.begin_parse();
-		cell dic = ds.slice_bits() == 0 ? new_dict() : data;
-		if (op == 1) {
-		;; здесь будем добавлять новые значения
-    	}
-		if (op == 2) {
-		;; здесь удалять
-    	}
-		throw (1001);
-	 }
-	 
-#op = 1
-
-With `op` equal to one, we add the value to the hashmap. Accordingly, according to the assignment, we need:
-  - get the key from the body of the message
-  - set value to hashmap(dictionary) using key and message body
-  - save hashmap(dictionary)
-  - ends the execution of the function so that we do not fall into the exception declared at the end of recv_internal ()
-
-##### Get the key
-
-Here everything is as before, using the `load_uint` function from the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib) it loads an unsigned n-bit integer from a slice.
-
-		if (op == 1) {
-			int key = in_msg_body~load_uint(256);
-    	}
-
-##### Working with hashmap
-
-To add data, we use `dict_set` , which sets the value associated with the key index key n bit depth in the dict dictionary to a slice and returns the resulting dictionary.
-
-	if (op == 1) { ;; add new entry
-		int key = in_msg_body~load_uint(256);
-		dic~udict_set(256, key, in_msg_body);
-
+	if (op == 1) {
+		;; 這裡將添加新值
 	}
-	
-##### Save the dictionary
-
-Using the `set_data()` function - write a cell with a hashmap to register c4.
-
-	if (op == 1) { ;; add new entry
-		int key = in_msg_body~load_uint(256);
-		dic~udict_set(256, key, in_msg_body);
-		set_data(dic);
-
-	}
-
-##### End function execution
-
-Everything is simple here, the `return` operator will help us.
-
-	if (op == 1) { ;; add new entry
-		int key = in_msg_body~load_uint(256);
-		dic~udict_set(256, key, in_msg_body);
-		set_data(dic);
-		return ();
-	}
-
-#op = 2
-
-Here our task is to remove all obsolete records from our data (with `valid_until` < `now())`. In order to "pass" through the hashmap we will use a loop. FunC has three [loops](https://ton-blockchain.github.io/docs/#/func/statements?id=loops): `repeat`,`until`,`while`.
-
-Since we have already subtracted `op` and `query_id`, check here that there is nothing in slice in_msg_body with `end_parse()`
-
-`end_parse()` - Checks if the slice is empty. If not, throws an exception
-
-	if (op == 2) { 
-		in_msg_body.end_parse();
-	}
-
-For our case, let's use a loop: `until`.
-
-	if (op == 2) { 
-		do {
-
-		} until ();
-	}
-	
-In order to check the `valid_until` < `now())` condition at each step, we need to get some minimum key of our hashmap. To do this, the [FunC standard library](https://ton-blockchain.github.io/docs/#/func/stdlib?id=dict_set) has a function `udict_get_next?`.
-
-`udict_get_next? ` - Calculates the minimum key k in the dictionary dict that is greater than some given value and returns k, the associated value, and a flag indicating success. If the dictionary is empty, returns (null, null, 0).
-
-Accordingly, we set the value from before the loop, from which we will take the minimum key, and in the loop itself we will use a flag indicating success.
-
-	if (op == 2) { 
-		int key = -1;
-		do {
-			(key, slice cs, int f) = dic.udict_get_next?(256, key);
-
-		} until (~ f);
-	}
-	
-Now, using the conditional operator, we will check the condition `valid_until` < `now())`. The value of `valid_until` is subtracted from `slice cs`.
-
-	if (op == 2) { 
-		int key = -1;
-		do {
-			(key, slice cs, int f) = dic.udict_get_next?(256, key);
-			if (f) {
-				int valid_until = cs~load_uint(64);
-				if (valid_until < now()) {
-						;; здесь будем удалять
-				}
-			}
-		} until (~ f);
-	}
-	
-We will delete from the hashmap using `udict_delete?`.
-
-`udict_delete?` Deletes the index with key k from the dict dictionary. If the key is present, returns the modified dictionary (hashmap) and success flag -1. Otherwise returns the original dict and 0.
-
-We get:
-
 	if (op == 2) {
-		int key = -1;
-		do {
-			(key, slice cs, int f) = dic.udict_get_next?(256, key);
-			if (f) {
-				int valid_until = cs~load_uint(64);
-				if (valid_until < now()) {
-					dic~udict_delete?(256, key);
-				}
-			}
-		} until (~ f);
-
+		;; 這裡將刪除
 	}
-	
-##### Save the dictionary
+	throw(1001);
+}
+```
 
-Using `dict_empty?` we check if the hashmap has become empty after our manipulations in the loop.
+### op = 1
 
-If there are values, we save our hashmap in c4. If not, then put an empty cell c4, using a combination of functions `begin_cell().end_cell()`
+當 `op` 等於 1 時，我們將值添加到 hashmap 中。根據任務要求，我們需要：
+- 從消息正文中獲取鍵
+- 使用鍵和消息正文將值設置到 hashmap（字典）中
+- 保存 hashmap（字典）
+- 結束函數執行，確保我們不會落入 recv_internal() 結尾聲明的異常中
+
+#### 獲取鍵
+
+這裡一切如前，使用 [FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib) 中的 `load_uint` 函數從 slice 中加載無符號的 n 位整數。
+
+```func
+if (op == 1) {
+	int key = in_msg_body~load_uint(256);
+}
+```
+
+#### 操作 hashmap
+
+要添加數據，我們使用 `dict_set`，該函數將與鍵索引鍵 n 位深度關聯的值設置為字典中的 slice，並返回生成的字典。
+
+```func
+if (op == 1) {
+	int key = in_msg_body~load_uint(256);
+	dic~udict_set(256, key, in_msg_body);
+}
+```
+
+#### 保存字典
+
+使用 `set_data()` 函數 - 將包含 hashmap 的 cell 寫入 c4 寄存器。
+
+```func
+if (op == 1) {
+	int key = in_msg_body~load_uint(256);
+	dic~udict_set(256, key, in_msg_body);
+	set_data(dic);
+}
+```
+
+#### 結束函數執行
+
+這裡很簡單，`return` 操作符將幫助我們。
+
+```func
+if (op == 1) {
+	int key = in_msg_body~load_uint(256);
+	dic~udict_set(256, key, in_msg_body);
+	set_data(dic);
+	return();
+}
+```
+
+### op = 2
+
+在這裡，我們的任務是從數據中刪除所有過期的記錄（`valid_until` < `now()`）。為了“遍歷” hashmap，我們將使用循環。FunC 有三種 [循環](https://ton-blockchain.github.io/docs/#/func/statements?id=loops)：`repeat`、`until`、`while`。
+
+由於我們已經從 `op` 和 `query_id` 中提取出來，這裡我們使用 `end_parse()` 檢查 slice in_msg_body 中是否沒有內容。
+
+`end_parse()` - 檢查 slice 是否為空。如果不是，則拋出異常。
+
+```func
+if (op == 2) {
+	in_msg_body.end_parse();
+}
+```
+
+對於我們的情況，我們使用 `until` 循環。
+
+```func
+if (op == 2) {
+	do {
+
+	} until();
+}
+```
+
+為了檢查每一步中的 `valid_until` < `now()` 條件，我們需要獲取我們的 hashmap 的某些最小鍵。為此，[FunC 標準庫](https://ton-blockchain.github.io/docs/#/func/stdlib?id=dict_set) 有一個 `udict_get_next?` 函數。
+
+`udict_get_next?` - 計算字典中大於某個給定值的最小鍵 k，並返回 k、關聯的值和表示成功的標誌。如果字典為空，則返回 (null, null, 0)。
+
+因此，我們在循環之前設置一個值，從中獲取最小鍵，並在循環中使用表示成功的標誌。
+
+```func
+if (op == 2) {
+	int key = -1;
+	do {
+		(key, slice cs, int f) = dic.udict_get_next?(256, key);
+
+	} until(~f);
+}
+```
+
+現在，使用條件運算符，我們將檢查 `valid_until` < `now()` 的條件。從 `slice cs` 中減去 `valid_until` 的值。
+
+```func
+if (op == 2) {
+	int key = -1;
+	do {
+		(key, slice cs, int f) = dic.udict_get_next?(256, key);
+		if (f) {
+			int valid_until = cs~load_uint(64);
+			if (valid_until < now()) {
+				;; 這裡將刪除
+			}
+		}
+	} until(~f);
+}
+```
+
+我們將使用 `udict_delete?` 從 hashmap 中刪除。
+
+`udict_delete?` 刪除字典中鍵 k 的索引。如果鍵存在，則返回修改後的字典（hashmap）和成功標誌 -1。否則返回原始字典和 0。
+
+我們得到：
+
+```func
+if (op == 2) {
+	int key = -1;
+	do {
+		(key, slice cs, int f) = dic.udict_get_next?(256, key);
+		if (f) {
+			int valid_until = cs~load_uint(64);
+			if (valid_until < now()) {
+				dic~udict_delete?(256, key);
+			}
+		}
+	} until(~f);
+}
+```
+
+#### 保存字典
+
+使用 `dict_empty?` 我們檢查在循環中操作後 hashmap 是否變為空。
+
+如果有值，我們將 hashmap 保存到 c4 中。如果沒有，則使用 `begin_cell().end_cell()` 函數組合將空 cell 放入 c4。
+
+```func
+if (dic.dict_empty?()) {
+	set_data(begin_cell().end_cell());
+} else {
+	set_data(dic);
+}
+```
+
+#### 結束函數執行
+
+這裡很簡單，`return` 操作符將幫助我們。最終代碼 `op`=2
+
+```func
+if (op == 2) {
+	int key = -1;
+	do {
+		(key, slice cs, int f) = dic.udict_get_next?(256, key);
+		if (f) {
+			int valid_until = cs~load_uint(64);
+			if (valid_until < now()) {
+				dic~udict_delete?(256, key);
+			}
+		}
+	} until(~f);
 
 	if (dic.dict_empty?()) {
-			set_data(begin_cell().end_cell());
-		} else {
-			set_data(dic);
-		}
-
-##### End function execution
-
-Everything is simple here, the `return` operator will help us. Final code `op`=2
-
-	if (op == 2) {
-		int key = -1;
-		do {
-			(key, slice cs, int f) = dic.udict_get_next?(256, key);
-			if (f) {
-				int valid_until = cs~load_uint(64);
-				if (valid_until < now()) {
-					dic~udict_delete?(256, key);
-				}
-			}
-		} until (~ f);
-
-		if (dic.dict_empty?()) {
-			set_data(begin_cell().end_cell());
-		} else {
-			set_data(dic);
-		}
-
-		return ();
+		set_data(begin_cell().end_cell());
+	} else {
+		set_data(dic);
 	}
 
-## Get function
+	return();
+}
+```
 
-The `get_key` method by key should return `valid_until` and a slice with data for that key. Accordingly, according to the assignment, we need:
+## Get 函數
 
-- get data from c4
-- find data by key
-- return an error if there is no data
-- subtract `valid_until`
-- return data
+`get_key` 方法應該返回 `valid_until` 和該鍵的數據 slice。根據任務要求，我們需要：
 
-##### Get data from c4
+- 從 c4 中獲取數據
+- 通過鍵查找數據
+- 如果沒有數據則返回錯誤
+- 減去 `valid_until`
+- 返回數據
 
-To load data, we will write a separate load_data() function that will check if there is data and return either an empty `new_dict()` dictionary or data from c4. We will check with `slice_bits()` - which returns the number of data bits in the slice.
+#### 從 c4 中獲取數據
 
-	cell load_data() {
-		cell data = get_data();
-		slice ds = data.begin_parse();
-		if (ds.slice_bits() == 0) {
-			return new_dict();
-		} else {
-			return data;
-		}
+為了加載數據，我們將編寫一個單獨的 load_data() 函數，該函數將檢查是否有數據並返回一個空的 `new_dict()` 字典或來自 c4 的數據。我們將使用 `slice_bits()` 檢查，該函數返回 slice 中的數據位數。
+
+```func
+cell load_data() {
+	cell data = get_data();
+	slice ds = data.begin_parse();
+	if (ds.slice_bits() == 0) {
+		return new_dict();
+	} else {
+		return data;
 	}
-	
-Now let's call the function in the get method.
+}
+```
 
-	(int, slice) get_key(int key) method_id {
-		cell dic = load_data();
+現在讓我們在 get 方法中調用該函數。
 
-	}
+```func
+(int, slice) get_key(int key) method_id {
+	cell dic = load_data();
+}
+```
 
-##### Looking for data by key
+#### 通過鍵查找數據
 
-To search for data by key, take the `udict_get?` function.
+要通過鍵查找數據，使用 `udict_get?` 函數。
 
-`udict_get?` - Looks up the index of a key in the dict dictionary. If successful, returns the value found as a slice, along with the -1 flag to indicate success. Returns (null, 0) on failure.
+`udict_get?` - 查找字典中鍵的索引。如果成功，返回找到的值作為 slice，以及表示成功的 -1 標誌。失敗時返回 (null, 0)。
 
-We get:
+我們得到：
 
-	(int, slice) get_key(int key) method_id {
-		cell dic = load_data();
-		(slice payload, int success) = dic.udict_get?(256, key);
+```func
+(int, slice) get_key(int key) method_id {
+	cell dic = load_data();
+	(slice payload, int success) = dic.udict_get?(256, key);
+}
+```
 
-	}
-	
-##### Return an error if there is no data
+#### 如果沒有數據則返回錯誤
 
-The `udict_get?` function returns the convenience flag we put in success.
-Using `throw_unless` we will return an exception.
+`udict_get?` 函數返回我們放入 success 中的便利標誌。
+使用 `throw_unless` 我們將返回異常。
 
-	(int, slice) get_key(int key) method_id {
-		cell dic = load_data();
-		(slice payload, int success) = dic.udict_get?(256, key);
-		throw_unless(98, success);
+```func
+(int, slice) get_key(int key) method_id {
+	cell dic = load_data();
+	(slice payload, int success) = dic.udict_get?(256, key);
+	throw_unless(98, success);
+}
+```
 
-	}
+#### 減去 valid_until 並返回數據
 
-##### Subtract valid_until and return data
+這裡很簡單，從 `payload` 變量中減去 `valid_until` 並返回兩個變量。
 
-Everything is simple here, subtract `valid_until` from the `payload` variable and return both variables.
+```func
+(int, slice) get_key(int key) method_id {
+	cell dic = load_data();
+	(slice payload, int success) = dic.udict_get?(256, key);
+	throw_unless(98, success);
 
-	(int, slice) get_key(int key) method_id {
-		cell dic = load_data();
-		(slice payload, int success) = dic.udict_get?(256, key);
-		throw_unless(98, success);
+	int valid_until = payload~load_uint(64);
+	return (valid_until, payload);
+}
+```
 
-		int valid_until = payload~load_uint(64);
-		return (valid_until, payload);
-	}
-	
-## Conclusion
+## 結論
 
-I wanted to say a special thank you to those who donate to support the project, it is very motivating and helps to release lessons faster. If you want to help the project (release lessons faster, translate it all into English, etc.), at the bottom of the [main page] (https://github.com/romanovichim/TonFunClessons_ru), there are addresses for donations.
+特別感謝那些捐款支持本項目的人，這非常有激勵作用，並有助於更快地發布課程。如果您想幫助這個項目（更快地發布課程，將所有內容翻譯成英文等），在[主頁底部](https://github.com/romanovichim/TonFunClessons_ru)有捐款地址。
